@@ -86,6 +86,7 @@ jobs:
         if: failure()
         run: |
           [ -f build.log ] || exit 0
+          set +e +o pipefail
           {
             echo '### Compile errors'
             echo '```'
