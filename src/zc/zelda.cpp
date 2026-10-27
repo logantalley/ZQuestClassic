@@ -96,6 +96,10 @@
 #include "base/emscripten_utils.h"
 #endif
 
+#ifdef __3DS__
+#include "platform/3ds/platform_3ds.h"
+#endif
+
 using namespace util;
 
 extern bool epilepsyFlashReduction;
@@ -3919,6 +3923,10 @@ static void init_bitmaps()
 
 int main(int argc, char **argv)
 {
+#ifdef __3DS__
+	zc_3ds_init();
+#endif
+
 	int test_zc_arg = used_switch(argc, argv, "-test-zc");
 	if (test_zc_arg > 0)
 		set_headless_mode();
