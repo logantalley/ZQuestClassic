@@ -22,6 +22,7 @@
 #include <ctype.h>
 #include <sstream>
 #include "base/about.h"
+#include "base/platform.h"
 #include "base/version.h"
 #include "base/win_encoding.h"
 #include "gamedata.h"
@@ -5565,7 +5566,7 @@ TopMenu the_player_menu
 	{ "&Cheat", &cheat_menu, MENUID_PLAYER_CHEAT, true },
 	{ "&Replay", &replay_menu },
 	{ "&ZC", &misc_menu },
-#ifndef __EMSCRIPTEN__
+#if ZC_HAS_MULTIPLE_WINDOWS
 	{ "&Debug", &debug_menu },
 #endif
 	#if DEVLEVEL > 0

@@ -1,0 +1,91 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index a6ba24af3..cfc918acc 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -386,7 +386,13 @@ if(ALLEGRO_SDL)
+    set(ALLEGRO_UNIX 0)
+    set(ALLEGRO_MACOSX 0)
+    set(WANT_X11 off)
+-   include(FindSDL2)
++   if(NINTENDO_3DS)
++      # No OpenGL; the parent project adds a software display driver.
++      set(WANT_OPENGL off)
++   endif()
++   if(NOT TARGET SDL2-static)
++      include(FindSDL2)
++   endif()
+ endif(ALLEGRO_SDL)
+ 
+ # Tell the compiler it can use SSE instructions on x86 architectures.
+@@ -739,9 +745,9 @@ endif(UNIX)
+ # SDL
+ #
+ 
+-if(ALLEGRO_SDL AND NOT SUPPORT_OPENGL)
++if(ALLEGRO_SDL AND NOT SUPPORT_OPENGL AND NOT NINTENDO_3DS)
+     message(FATAL_ERROR "SDL support currently requires OpenGL or OpenGL ES support.")
+-endif(ALLEGRO_SDL AND NOT SUPPORT_OPENGL)
++endif()
+ 
+ #
+ # X Window System
+@@ -1059,8 +1065,15 @@ endforeach(genfile)
+ 
+ if(ALLEGRO_SDL)
+     list(APPEND LIBRARY_SOURCES ${ALLEGRO_SRC_SDL_FILES})
+-    list(APPEND PLATFORM_LIBS ${SDL2_LIBRARY} m)
+-    include_directories(${SDL2_INCLUDE_DIR})
++    if(NOT SUPPORT_OPENGL)
++        list(REMOVE_ITEM LIBRARY_SOURCES src/sdl/sdl_display.c)
++    endif()
++    if(TARGET SDL2-static)
++        list(APPEND PLATFORM_LIBS $<BUILD_INTERFACE:SDL2-static> m)
++    else()
++        list(APPEND PLATFORM_LIBS ${SDL2_LIBRARY} m)
++        include_directories(${SDL2_INCLUDE_DIR})
++    endif()
+ endif(ALLEGRO_SDL)
+ 
+ set_our_header_properties(${ALLEGRO_PUBLIC_HEADERS})
+@@ -1300,7 +1313,7 @@ install(
+ # Export build tree to ease development and debugging.
+ # Skipped when linking a vendored SDL2-static: that foreign target cannot be
+ # part of this export set.
+-if(NOT (WANT_SDL2_JOYSTICK AND NOT ALLEGRO_SDL AND TARGET SDL2-static))
++if(NOT (TARGET SDL2-static AND (WANT_SDL2_JOYSTICK OR ALLEGRO_SDL)))
+   export(EXPORT ${PKG_TARGETS_NAME}
+     FILE "${PKG_GENERATED_DIR}/${PKG_NAME}Targets.cmake"
+     NAMESPACE ${PKG_NAME}::
+diff --git a/src/sdl/sdl_system.c b/src/sdl/sdl_system.c
+index 205b6d138..36fa12bec 100644
+--- a/src/sdl/sdl_system.c
++++ b/src/sdl/sdl_system.c
+@@ -154,6 +154,9 @@ static ALLEGRO_SYSTEM *sdl_initialize(int flags)
+ #ifdef __EMSCRIPTEN__
+    // SDL currently does not support haptic feedback for emscripten.
+    sdl_flags &= ~SDL_INIT_HAPTIC;
++#elif defined(__3DS__)
++   sdl_flags = SDL_INIT_TIMER | SDL_INIT_AUDIO | SDL_INIT_VIDEO |
++      SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS;
+ #endif
+    if (SDL_Init(sdl_flags) < 0) {
+       ALLEGRO_ERROR("SDL_Init failed: %s", SDL_GetError());
+diff --git a/src/tls.c b/src/tls.c
+index 79ab39d97..8017d1478 100644
+--- a/src/tls.c
++++ b/src/tls.c
+@@ -433,8 +433,12 @@ void al_set_target_bitmap(ALLEGRO_BITMAP *bitmap)
+       new_shader = NULL;
+    }
+    else if (bitmap_flags & ALLEGRO_MEMORY_BITMAP) {
+-      /* Setting a memory bitmap doesn't change the rendering context. */
+-      new_display = old_display;
++      /* Setting a memory bitmap doesn't change the rendering context,
++       * unless it is the backbuffer of a software display.
++       */
++      new_display = _al_get_bitmap_display(bitmap);
++      if (!new_display)
++         new_display = old_display;
+       new_shader = NULL;
+    }
+    else {

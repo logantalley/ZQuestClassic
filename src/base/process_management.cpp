@@ -1,4 +1,5 @@
 #include "base/process_management.h"
+#include "base/platform.h"
 #include "base/util.h"
 #include "base/win_encoding.h"
 #include "base/zapp.h"
@@ -12,8 +13,10 @@
 	#include <cstring>
 	#include <sys/types.h>
 	#include <sys/wait.h>
+	#if ZC_HAS_PROCESSES
 	#include <spawn.h>
 	#include <pstream.h>
+	#endif
 #endif
 
 using namespace util;
@@ -48,6 +51,9 @@ void process_killer::reap(bool block) const
 {
 	if(reaped || !pid)
 		return;
+#if !ZC_HAS_PROCESSES
+	reaped = true;
+#else
 	int status = 0;
 	pid_t ret;
 	do
@@ -64,6 +70,7 @@ void process_killer::reap(bool block) const
 		reaped = true;
 		wait_status = -1;
 	}
+#endif
 }
 #endif
 bool process_killer::is_alive() const
@@ -326,9 +333,11 @@ bool process_manager::write(void* buf, uint32_t bytes_to_write, uint32_t* bytes_
 	// instead of letting it report that the child died. Ignore it, so the write fails with
 	// EPIPE instead. That alone doesn't mean the child failed (it may have finished without
 	// waiting for this), so it is left to the next read to find out.
+#if ZC_HAS_PROCESSES
 	struct sigaction ignore_action = {}, old_action;
 	ignore_action.sa_handler = SIG_IGN;
 	sigaction(SIGPIPE, &ignore_action, &old_action);
+#endif
 	uint32_t total = 0;
 	while(total < bytes_to_write)
 	{
@@ -339,7 +348,9 @@ bool process_manager::write(void* buf, uint32_t bytes_to_write, uint32_t* bytes_
 			break;
 		total += ret;
 	}
+#if ZC_HAS_PROCESSES
 	sigaction(SIGPIPE, &old_action, nullptr);
+#endif
 	if(bytes_written) *bytes_written = total;
 	return total==bytes_to_write;
 #endif
@@ -585,6 +596,8 @@ process_killer launch_process(std::string file, const std::vector<std::string>& 
 	if (!CreateProcessW(NULL,cmd.data(),NULL,NULL,FALSE,CREATE_NEW_CONSOLE,NULL,NULL,&si,&pi))
 		zprint2("[PROCESS_LAUNCH: '%s' ERROR %d]: Failed to create process\n", file.c_str(), (int)GetLastError());
 	return process_killer(pi.hProcess);
+#elif !ZC_HAS_PROCESSES
+	ERR_EXIT("Not supported", (process_manager*)0, 0);
 #else
 	std::vector<char*> argv = create_argv_unix(file, args);
 	pid_t pid;
@@ -674,6 +687,8 @@ process_manager* launch_piped_process(std::string file, [[maybe_unused]] std::st
 		ERR_EXIT("Failed to create process", pm, GetLastError());
 	pm->init_process(pi.hProcess);
 	return pm;
+#elif !ZC_HAS_PROCESSES
+	ERR_EXIT("Not supported", pm, 0);
 #else
 	int32_t pdes_r[2], pdes_w[2];
 	posix_spawn_file_actions_t file_actions;
@@ -727,7 +742,7 @@ void launch_file(std::string const& file)
 	strcat(path_buf, "\\\\");
 	strcat(path_buf, file.c_str());
 	ShellExecute(0, 0, path_buf, 0, 0, SW_NORMAL);
-#elif defined(__EMSCRIPTEN__)
+#elif !ZC_HAS_PROCESSES
 	// TODO
 #else
 	std::string command = "open " + file;
@@ -738,7 +753,9 @@ void launch_file(std::string const& file)
 // TODO: also need to read stderr in windows
 bool run_and_get_output(std::string file, const std::vector<std::string>& args, std::string& output)
 {
-#ifndef _WIN32
+#if !ZC_HAS_PROCESSES
+	return false;
+#elif !defined(_WIN32)
 	// For unix, bypass the whole pipe thing (which breaks terribly when zlauncher calls zupdater) by
 	// using pstream library. Bonus, gives us stderr too.
 	std::stringstream result;

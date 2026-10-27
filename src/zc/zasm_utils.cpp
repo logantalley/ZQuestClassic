@@ -1,4 +1,5 @@
 #include "zc/zasm_utils.h"
+#include "base/platform.h"
 #include "core/qst.h"
 #include "core/zdefs.h"
 #include "components/zasm/debug_data.h"
@@ -1453,7 +1454,7 @@ uint64_t zasm_scripts_hash()
 	};
 
 	// TODO: debug issues on web build.
-	if (!is_web())
+	if (ZC_HAS_THREADS && !is_web())
 		std::for_each(std::execution::par_unseq, chunks.begin(), chunks.end(), hash_chunk);
 	else
 		std::for_each(std::execution::seq, chunks.begin(), chunks.end(), hash_chunk);
@@ -1474,7 +1475,7 @@ void zasm_for_every_script(bool parallel, std::function<void(zasm_script*)> fn)
 			scripts.push_back(script.get());
 
 	// TODO: debug issues on web build.
-	if (parallel && !is_web())
+	if (ZC_HAS_THREADS && parallel && !is_web())
 		std::for_each(std::execution::par_unseq, scripts.begin(), scripts.end(), fn);
 	else
 		std::for_each(std::execution::seq, scripts.begin(), scripts.end(), fn);

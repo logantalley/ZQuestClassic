@@ -1,6 +1,7 @@
 #include "zc/debugger/debugger.h"
 
 #include "base/expected.h"
+#include "base/platform.h"
 #include "zalleg/new_menu.h"
 #include "core/qst.h"
 #include "base/util.h"
@@ -1638,7 +1639,7 @@ void zscript_debugger_clear()
 
 void zscript_debugger_init()
 {
-#ifdef __EMSCRIPTEN__
+#if !ZC_HAS_MULTIPLE_WINDOWS
 	return;
 #endif
 
