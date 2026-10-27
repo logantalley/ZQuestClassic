@@ -41,24 +41,14 @@ endif()
 # Release builds go through the same section GC as the desktop.
 add_link_options("$<$<CONFIG:Release,RelWithDebInfo>:-Wl,--gc-sections>")
 
-# Called just before the vendored SDL2 is configured.
+# Called just before the vendored SDL2 is configured: the 3DS build uses SDL
+# for video, audio and input, not just joysticks. (Allegro links SDL2-static.)
 macro(zc_3ds_sdl)
 	foreach(var SDL_AUDIO SDL_VIDEO SDL_RENDER SDL_FILESYSTEM SDL_POWER)
 		set(${var} ON CACHE BOOL "" FORCE)
 	endforeach()
 	set(SDL_HIDAPI OFF CACHE BOOL "" FORCE)
 	set(SDL_STATIC_PIC OFF CACHE BOOL "" FORCE)
-
-	# Allegro's SDL backend locates SDL with its FindSDL2 module. Seed its
-	# results with this SDL (not the portlib), through an imported target so
-	# allegro's export sets accept it.
-	add_library(zc_sdl2 INTERFACE IMPORTED GLOBAL)
-	set_target_properties(zc_sdl2 PROPERTIES INTERFACE_LINK_LIBRARIES SDL2-static)
-	set(SDL2_BUILDING_LIBRARY ON)
-	set(SDL2_LIBRARIES zc_sdl2)
-	set(SDL2_LIBRARY zc_sdl2 CACHE STRING "" FORCE)
-	set(SDL2_LIBRARY_TEMP zc_sdl2 CACHE INTERNAL "")
-	set(SDL2_INCLUDE_DIR "$<TARGET_PROPERTY:SDL2-static,INTERFACE_INCLUDE_DIRECTORIES>" CACHE STRING "" FORCE)
 endmacro()
 
 # Called at the end of the root CMakeLists.txt, in place of the desktop
