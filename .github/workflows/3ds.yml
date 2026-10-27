@@ -1,0 +1,123 @@
+name: 3DS
+
+# Builds zplayer for the Nintendo 3DS (see docs/3ds-port.md), and uploads it as
+# zplayer.3dsx (Homebrew Launcher) and zplayer.cia.
+
+on:
+  push:
+    branches:
+      - 3ds-port
+      - '3ds/**'
+  pull_request:
+    paths:
+      - .github/workflows/3ds.yml
+      - CMakeLists.txt
+      - cmake/zc_3ds.cmake
+      - packaging/3ds/**
+      - resources/3ds/**
+      - src/platform/3ds/**
+      - third_party/*3ds*
+  workflow_dispatch:
+
+env:
+  PYTHONUNBUFFERED: '1'
+  CCACHE_MAXSIZE: 800M
+  CCACHE_SLOPPINESS: time_macros
+  BANNERTOOL_URL: https://github.com/diasurgical/bannertool/releases/download/1.2.0/bannertool.zip
+  BANNERTOOL_SHA256: 69768596f836acb3e3aeaa66e47c6ba560dde813c6dfcd33c8afc25fe29b7524
+  # 0.19.0's linux build needs a newer glibc than the image has.
+  MAKEROM_URL: https://github.com/3DSGuy/Project_CTR/releases/download/makerom-v0.18.4/makerom-v0.18.4-ubuntu_x86_64.zip
+  MAKEROM_SHA256: dd596854718c195c6e3229286be485b122921715555af8ae5cf8e9a465d9f970
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    container: devkitpro/devkitarm:20260610
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install host tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends flex bison ccache
+          # The workspace belongs to the runner user, not the container's root.
+          git config --global --add safe.directory '*'
+          echo "CCACHE_DIR=$GITHUB_WORKSPACE/.ccache" >> $GITHUB_ENV
+          echo "CCACHE_BASEDIR=$GITHUB_WORKSPACE" >> $GITHUB_ENV
+
+      - name: Install bannertool and makerom
+        run: |
+          cd "$RUNNER_TEMP"
+          curl -sSfL -o bannertool.zip "$BANNERTOOL_URL"
+          curl -sSfL -o makerom.zip "$MAKEROM_URL"
+          echo "$BANNERTOOL_SHA256  bannertool.zip" | sha256sum -c
+          echo "$MAKEROM_SHA256  makerom.zip" | sha256sum -c
+          unzip -j -o bannertool.zip linux-x86_64/bannertool -d /usr/local/bin
+          unzip -j -o makerom.zip makerom -d /usr/local/bin
+          chmod +x /usr/local/bin/bannertool /usr/local/bin/makerom
+
+      - name: Restore ccache
+        uses: actions/cache@v5
+        with:
+          path: .ccache
+          key: 3ds-ccache-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            3ds-ccache-${{ github.ref_name }}-
+            3ds-ccache-
+
+      - name: Configure
+        run: |
+          cmake -B build -S . -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE=$DEVKITPRO/cmake/3DS.cmake \
+            -DCMAKE_BUILD_TYPE=Release
+
+      # -k 0 keeps going after errors, so one run shows as many as possible.
+      - name: Build zplayer
+        run: |
+          set -o pipefail
+          ccache -z
+          cmake --build build -t zplayer -- -k 0 2>&1 | tee build.log
+          ccache -s
+
+      - name: Summarize errors
+        if: failure()
+        run: |
+          [ -f build.log ] || exit 0
+          {
+            echo '### Compile errors'
+            echo '```'
+            grep -E '(error|fatal error):' build.log | sed -E 's#^.*/(src|third_party|_deps)/#\1/#' | sort | uniq -c | sort -rn | head -300
+            echo '```'
+            echo '### Link errors'
+            echo '```'
+            grep -E 'undefined reference|multiple definition' build.log | sort | uniq -c | sort -rn | head -200
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: zplayer-3ds-build-log
+          path: build.log
+          if-no-files-found: ignore
+
+      - name: Package
+        run: cmake --build build -t zplayer_3dsx zplayer_cia
+
+      - name: Upload zplayer.3dsx
+        uses: actions/upload-artifact@v7
+        with:
+          name: zplayer.3dsx
+          path: build/zplayer.3dsx
+          if-no-files-found: error
+
+      - name: Upload zplayer.cia
+        uses: actions/upload-artifact@v7
+        with:
+          name: zplayer.cia
+          path: build/zplayer.cia
+          if-no-files-found: error

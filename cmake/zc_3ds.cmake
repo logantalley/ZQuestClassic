@@ -1,0 +1,116 @@
+# Nintendo 3DS build of zplayer (see docs/3ds-port.md). Configure with the
+# devkitPro toolchain file:
+#    cmake -B build_3ds -G Ninja -DCMAKE_TOOLCHAIN_FILE=$DEVKITPRO/cmake/3DS.cmake
+# This is included near the top of the root CMakeLists.txt, and does nothing
+# for other platforms.
+
+option(ZC_3DS "Build zplayer for the Nintendo 3DS" ${NINTENDO_3DS})
+if(NOT ZC_3DS)
+	return()
+endif()
+if(NOT NINTENDO_3DS)
+	message(FATAL_ERROR "ZC_3DS requires the devkitPro 3DS toolchain file ($DEVKITPRO/cmake/3DS.cmake)")
+endif()
+
+# Only zplayer is built: no JIT for ARM32, and nothing that needs an OS
+# (processes, sockets, native dialogs, crash handlers).
+set(JIT_BACKEND "none" CACHE STRING "" FORCE)
+foreach(var WANT_ZUPDATER WANT_SENTRY WANT_WEBSOCKETS WANT_NFD WANT_ZC_TESTS)
+	set(${var} FALSE CACHE BOOL "" FORCE)
+endforeach()
+# newlib's int32_t is a long, which turns many printf formats into warnings.
+set(WANT_ERROR_CHECKING FALSE CACHE BOOL "" FORCE)
+# The toolchain can see devkitPro's portlibs (curl, SDL2, ...); use none of them.
+foreach(pkg CURL TBB OpenSSL)
+	set(CMAKE_DISABLE_FIND_PACKAGE_${pkg} ON)
+endforeach()
+
+set(GME_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+
+# Allegro runs on the SDL backend, with a software display instead of OpenGL.
+set(ALLEGRO_SDL ON CACHE BOOL "" FORCE)
+foreach(var WANT_OPENGL WANT_SHADERS_GL WANT_NATIVE_DIALOG WANT_PHYSFS WANT_ALSA WANT_OSS WANT_PULSEAUDIO WANT_OPENAL)
+	set(${var} OFF CACHE BOOL "" FORCE)
+endforeach()
+# Applied when allegro is fetched, so it can also change allegro's CMake.
+set(zc_3ds_allegro_patch "${CMAKE_SOURCE_DIR}/third_party/allegro5_3ds.patch")
+if(EXISTS "${zc_3ds_allegro_patch}")
+	set(ZC_3DS_ALLEGRO_PATCH PATCH_COMMAND git restore . && git apply "${zc_3ds_allegro_patch}")
+endif()
+
+# Release builds go through the same section GC as the desktop.
+add_link_options("$<$<CONFIG:Release,RelWithDebInfo>:-Wl,--gc-sections>")
+
+# Called just before the vendored SDL2 is configured.
+macro(zc_3ds_sdl)
+	foreach(var SDL_AUDIO SDL_VIDEO SDL_RENDER SDL_FILESYSTEM SDL_POWER)
+		set(${var} ON CACHE BOOL "" FORCE)
+	endforeach()
+	set(SDL_HIDAPI OFF CACHE BOOL "" FORCE)
+	set(SDL_STATIC_PIC OFF CACHE BOOL "" FORCE)
+
+	# Allegro's SDL backend locates SDL with its FindSDL2 module. Seed its
+	# results with this SDL (not the portlib), through an imported target so
+	# allegro's export sets accept it.
+	add_library(zc_sdl2 INTERFACE IMPORTED GLOBAL)
+	set_target_properties(zc_sdl2 PROPERTIES INTERFACE_LINK_LIBRARIES SDL2-static)
+	set(SDL2_BUILDING_LIBRARY ON)
+	set(SDL2_LIBRARIES zc_sdl2)
+	set(SDL2_LIBRARY zc_sdl2 CACHE STRING "" FORCE)
+	set(SDL2_LIBRARY_TEMP zc_sdl2 CACHE INTERNAL "")
+	set(SDL2_INCLUDE_DIR "$<TARGET_PROPERTY:SDL2-static,INTERFACE_INCLUDE_DIRECTORIES>" CACHE STRING "" FORCE)
+endmacro()
+
+# Called at the end of the root CMakeLists.txt, in place of the desktop
+# packaging: hooks in src/platform/3ds, and packages zplayer.
+macro(zc_3ds_finalize)
+	if(EXISTS "${CMAKE_SOURCE_DIR}/src/platform/3ds/CMakeLists.txt")
+		add_subdirectory(src/platform/3ds)
+	endif()
+	if(TARGET zc_3ds)
+		target_link_libraries(zplayer PRIVATE zc_3ds)
+	endif()
+
+	# Defined for the desktop, but not part of the 3DS build.
+	foreach(target zeditor zscript zlauncher)
+		if(TARGET ${target})
+			set_target_properties(${target} PROPERTIES EXCLUDE_FROM_ALL ON)
+		endif()
+	endforeach()
+
+	set(zc_3ds_pkg "${CMAKE_SOURCE_DIR}/packaging/3ds")
+	set(zc_3ds_title "ZQuest Classic")
+	set(zc_3ds_desc "Play Zelda-like quests")
+	set(zc_3ds_author "ZQuest Classic Team")
+	include(${zc_3ds_pkg}/romfs.cmake)
+
+	# zplayer.3dsx (Homebrew Launcher).
+	ctr_generate_smdh(zplayer.smdh
+		NAME "${zc_3ds_title}" DESCRIPTION "${zc_3ds_desc}" AUTHOR "${zc_3ds_author}"
+		ICON "${zc_3ds_pkg}/icon.png"
+	)
+	ctr_create_3dsx(zplayer SMDH zplayer.smdh ROMFS zplayer_romfs)
+
+	# zplayer.cia, when bannertool and makerom are on the PATH (CI downloads them).
+	find_program(BANNERTOOL bannertool)
+	find_program(MAKEROM makerom)
+	if(BANNERTOOL AND MAKEROM)
+		add_custom_command(
+			OUTPUT zplayer.cia
+			COMMAND ${BANNERTOOL} makebanner -i "${zc_3ds_pkg}/banner.png"
+				-a "${CMAKE_SOURCE_DIR}/resources/assets/zc/ZC_Sword_Woosh.wav" -o zplayer.bnr
+			COMMAND ${BANNERTOOL} makesmdh -s "${zc_3ds_title}" -l "${zc_3ds_desc}" -p "${zc_3ds_author}"
+				-i "${zc_3ds_pkg}/icon.png" -o zplayer.icn
+			COMMAND ${MAKEROM} -f cia -o zplayer.cia -target t -elf $<TARGET_FILE:zplayer>
+				-rsf "${zc_3ds_pkg}/zplayer.rsf" -icon zplayer.icn -banner zplayer.bnr
+				"-DAPP_ROMFS=${ZC_3DS_ROMFS_DIR}"
+			DEPENDS zplayer zplayer_romfs "${CMAKE_BINARY_DIR}/romfs.stamp"
+				"${zc_3ds_pkg}/zplayer.rsf" "${zc_3ds_pkg}/icon.png" "${zc_3ds_pkg}/banner.png"
+			COMMENT "Building zplayer.cia"
+			VERBATIM
+		)
+		add_custom_target(zplayer_cia ALL DEPENDS zplayer.cia)
+	else()
+		message(STATUS "bannertool or makerom not found - not building zplayer.cia")
+	endif()
+endmacro()

@@ -93,6 +93,9 @@ set(RELEASE_PLATFORM "" CACHE STRING "Release platform. Ex: mac, linux, windows-
 set(RELEASE_CHANNEL "" CACHE STRING "Release channel. Used by updater to find new releases")
 set(REPO "" CACHE STRING "GitHub org/repo")
 
+# Nintendo 3DS: sets ZC_3DS, and overrides the options above.
+include(zc_3ds)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -267,7 +270,8 @@ set(ZC_INSTALL_TARGETS "")
 # Emscripten >= 6.0 makes -shared produce real wasm side modules (FAKE_DYLIBS
 # now defaults off), which require -fPIC objects and dynamic linking support.
 # Everything is linked into a single wasm binary on web anyway, so build static.
-if(EMSCRIPTEN)
+# The 3DS has no dynamic linking at all.
+if(EMSCRIPTEN OR ZC_3DS)
 	set(BUILD_SHARED_LIBS OFF)
 else()
 	set(BUILD_SHARED_LIBS ON)
@@ -296,7 +300,7 @@ if(WANT_VENDORED_LIBJPEG_TURBO)
 	include_directories(BEFORE SYSTEM "${CMAKE_CURRENT_SOURCE_DIR}/third_party/libjpeg-turbo/src")
 endif()
 
-if (NOT EMSCRIPTEN)
+if (NOT EMSCRIPTEN AND NOT ZC_3DS)
 	FetchContent_Declare(
 		stduuid
 		GIT_REPOSITORY
@@ -398,6 +402,9 @@ if(NOT EMSCRIPTEN)
 	set(SDL_SENSOR OFF CACHE BOOL "" FORCE)
 	set(SDL_LOCALE OFF CACHE BOOL "" FORCE)
 	set(SDL_MISC OFF CACHE BOOL "" FORCE)
+	if(ZC_3DS)
+		zc_3ds_sdl()
+	endif()
 	FetchContent_MakeAvailable(SDL2)
 	set(WANT_SDL2_JOYSTICK ON CACHE BOOL "" FORCE)
 endif()
@@ -416,9 +423,10 @@ FetchContent_Declare(
   allegro5
   GIT_REPOSITORY https://github.com/connorjclark/allegro5.git
   GIT_TAG        c5409b301906150d231709407bb8de2e3c12f732
+  ${ZC_3DS_ALLEGRO_PATCH}
   EXCLUDE_FROM_ALL
 )
-if(EMSCRIPTEN)
+if(EMSCRIPTEN OR ZC_3DS)
 	set(SHARED OFF CACHE BOOL "" FORCE)
 else()
 	set(SHARED ON CACHE BOOL "" FORCE)
@@ -439,6 +447,9 @@ set(WANT_VIDEO OFF CACHE BOOL "" FORCE)
 set(WANT_MEMFILE ON CACHE BOOL "" FORCE)
 set(WANT_ALLOW_SSE "sse3" CACHE STRING "" FORCE)
 FetchContent_MakeAvailable(allegro5)
+if(ZC_3DS)
+	include(${CMAKE_SOURCE_DIR}/src/platform/3ds/allegro/allegro_3ds.cmake OPTIONAL)
+endif()
 # Allegro 5 CMakeLists sets CMAKE_CONFIGURATION_TYPES in a way that doesn't work for us,
 # so set it back to our value.
 set(CMAKE_CONFIGURATION_TYPES Asan Debug Release RelWithDebInfo Coverage CACHE STRING INTERNAL FORCE)
@@ -474,7 +485,7 @@ target_link_libraries(allegro-legacy PRIVATE allegro_headers)
 add_library(allegro_with_legacy INTERFACE)
 # allegro_main is left out: only apps that open windows link it (see "allegro_main" below).
 target_link_libraries(allegro_with_legacy INTERFACE allegro_headers allegro-legacy allegro_primitives allegro_font allegro_image allegro_audio allegro_acodec allegro_memfile)
-if (NOT EMSCRIPTEN)
+if (NOT EMSCRIPTEN AND NOT ZC_3DS)
 	target_link_libraries(allegro_with_legacy INTERFACE allegro_dialog)
 endif()
 
@@ -1042,7 +1053,7 @@ target_compile_definitions(zplayer PRIVATE IS_PLAYER)
 set_property(TARGET zplayer PROPERTY VS_DPI_AWARE "PerMonitor")
 target_include_directories(zplayer PRIVATE include/xxhash)
 target_link_libraries(zplayer PRIVATE core zcsound zconsolelogger zcgui worker_pool websocket poolSTL_tbb imgui_color_text_edit)
-if (NOT EMSCRIPTEN)
+if (NOT EMSCRIPTEN AND NOT ZC_3DS)
 	target_link_libraries(zplayer PRIVATE stduuid)
 	target_compile_definitions(zplayer PRIVATE HAS_UUID)
 endif()
@@ -1613,7 +1624,11 @@ if(EMSCRIPTEN)
 	add_subdirectory(web)
 endif()
 
-add_subdirectory(packaging)
+if(ZC_3DS)
+	zc_3ds_finalize()
+else()
+	add_subdirectory(packaging)
+endif()
 
 #############################################################
 # Visual Studio

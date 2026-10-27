@@ -71,6 +71,8 @@ if(WANT_VENDORED_LIBPNG)
 			libpng/src/intel/filter_sse2_intrinsics.c
 		)
 		target_compile_definitions(png PUBLIC PNG_INTEL_SSE)
+	elseif(ZC_3DS)
+		# The 3DS's ARM11 has no NEON.
 	elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm|ARM|aarch64|AARCH64)")
 		target_sources(png PRIVATE
 			libpng/src/arm/arm_init.c

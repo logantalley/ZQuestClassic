@@ -29,7 +29,7 @@ set(ZCSOUNDSOURCES
 	zcmixer.cpp
 	zcmusic.cpp
 )
-if(EMSCRIPTEN)
+if(EMSCRIPTEN OR ZC_3DS)
 	add_library(zcsound STATIC ${ZCSOUNDSOURCES})
 else()
 	add_library(zcsound SHARED ${ZCSOUNDSOURCES})
