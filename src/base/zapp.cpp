@@ -1,6 +1,7 @@
 #include "base/zapp.h"
 
 #include "base/about.h"
+#include "base/platform.h"
 #include "base/version.h"
 #include "base/win_encoding.h"
 #include "fmt/ranges.h"
@@ -119,7 +120,7 @@ static int argc;
 static char** argv;
 static App app_id = App::undefined;
 
-#if !defined(_WIN32) && !defined(__APPLE__) && !defined(__EMSCRIPTEN__)
+#if !defined(_WIN32) && !defined(__APPLE__) && ZC_HAS_EXE_DIR
 // Best-effort path to the running executable from argv[0], for systems that have no API
 // for it (OpenBSD) or where procfs is unavailable. Like a shell, a bare command name is
 // looked up in PATH.
@@ -171,7 +172,7 @@ static std::string get_exe_folder_path()
 	uint32_t length = PATH_MAX;
 	if (!_NSGetExecutablePath(buf, &length))
 		path = std::string(buf, length>0 ? length : 0);
-#elif defined(__EMSCRIPTEN__)
+#elif !ZC_HAS_EXE_DIR
 	path = "";
 #else
 #if defined(__FreeBSD__) || defined(__DragonFly__)
@@ -242,7 +243,7 @@ void common_main_setup(App id, int argc_, char **argv_)
 	}
 
 	bool disable_chdir = std::getenv("ZC_DISABLE_OSX_CHDIR") != nullptr || std::getenv("ZC_DISABLE_CHDIR") != nullptr;
-	if (!disable_chdir)
+	if (ZC_HAS_EXE_DIR && !disable_chdir)
 	{
 #if !defined(_WIN32) && !defined(__APPLE__) && !defined(__EMSCRIPTEN__)
 		// Change to share/zquestclassic folder.

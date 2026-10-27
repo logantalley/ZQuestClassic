@@ -2,10 +2,11 @@
 #define ZC_CONSOLE_LOGGER_H_
 
 #include "base/ints.h"
+#include "base/platform.h"
 #include "base/process_management.h"
 #include <string>
 
-#ifndef __EMSCRIPTEN__
+#if ZC_HAS_NATIVE_DIALOGS
 #include <allegro5/allegro_native_dialog.h>
 #endif
 
@@ -280,7 +281,7 @@ public:
 
 protected:
 	char	m_name[64];
-#ifndef __EMSCRIPTEN__
+#if ZC_HAS_NATIVE_DIALOGS
 	ALLEGRO_TEXTLOG* m_textlog;
 #endif
 	bool kill_on_close;

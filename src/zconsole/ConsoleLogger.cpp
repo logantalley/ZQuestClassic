@@ -564,7 +564,7 @@ int32_t CConsoleLogger::Create([[maybe_unused]] const char	*lpszWindowTitle/*=NU
 							[[maybe_unused]] const char	*logger_name/*=NULL*/,
 							[[maybe_unused]] const char	*helper_executable/*=NULL*/)
 {
-#ifdef __EMSCRIPTEN__
+#if !ZC_HAS_NATIVE_DIALOGS
 	return 0;
 #else
 	if (m_textlog) {
@@ -578,7 +578,7 @@ int32_t CConsoleLogger::Create([[maybe_unused]] const char	*lpszWindowTitle/*=NU
 
 void CConsoleLogger::kill()
 {
-#ifndef __EMSCRIPTEN__
+#if ZC_HAS_NATIVE_DIALOGS
 	if (m_textlog) {
 		al_close_native_text_log(m_textlog);
 		m_textlog = NULL;
@@ -601,7 +601,7 @@ int32_t CConsoleLogger::Close(void)
 //////////////////////////////////////////////////////////////////////////
 inline int32_t CConsoleLogger::print(const char *lpszText, [[maybe_unused]] int32_t iSize/*=-1*/)
 {
-#ifndef __EMSCRIPTEN__
+#if ZC_HAS_NATIVE_DIALOGS
 	if (m_textlog) al_append_native_text_log(m_textlog, "%s", lpszText);
 #endif
 	return 0;
@@ -609,7 +609,7 @@ inline int32_t CConsoleLogger::print(const char *lpszText, [[maybe_unused]] int3
 
 bool CConsoleLogger::valid()
 {
-#ifdef __EMSCRIPTEN__
+#if !ZC_HAS_NATIVE_DIALOGS
 	return 0;
 #else
 	return m_textlog != NULL;
@@ -631,7 +631,7 @@ int32_t CConsoleLogger::printf(const char *format,...)
 	
 	va_end(argList);
 	
-#ifndef __EMSCRIPTEN__
+#if ZC_HAS_NATIVE_DIALOGS
 	if (m_textlog) al_append_native_text_log(m_textlog, "%s", tmp);
 #endif
 	return ret;
@@ -736,7 +736,7 @@ int32_t CConsoleLoggerEx::cprintf([[maybe_unused]] int32_t attributes, const cha
 	
 	va_end(argList);
 
-#ifndef __EMSCRIPTEN__
+#if ZC_HAS_NATIVE_DIALOGS
 	if (m_textlog) al_append_native_text_log(m_textlog, "%s", tmp);
 #endif
 	return ret;
@@ -744,7 +744,7 @@ int32_t CConsoleLoggerEx::cprintf([[maybe_unused]] int32_t attributes, const cha
 int32_t CConsoleLoggerEx::safeprint([[maybe_unused]] int32_t attributes, const char *str)
 {
 	int32_t sz = strlen(str);
-#ifndef __EMSCRIPTEN__
+#if ZC_HAS_NATIVE_DIALOGS
 	if (m_textlog) al_append_native_text_log(m_textlog, "%s", str);
 #endif
 	return sz;
@@ -765,7 +765,7 @@ int32_t CConsoleLoggerEx::cprintf(const char *format,...)
 	
 	va_end(argList);
 
-#ifndef __EMSCRIPTEN__
+#if ZC_HAS_NATIVE_DIALOGS
 	if (m_textlog) al_append_native_text_log(m_textlog, "%s", tmp);
 #endif
 	return ret;
@@ -773,7 +773,7 @@ int32_t CConsoleLoggerEx::cprintf(const char *format,...)
 int32_t CConsoleLoggerEx::safeprint(const char *str)
 {
 	int32_t sz = strlen(str);
-#ifndef __EMSCRIPTEN__
+#if ZC_HAS_NATIVE_DIALOGS
 	if (m_textlog) al_append_native_text_log(m_textlog, "%s", str);
 #endif
 	return sz;

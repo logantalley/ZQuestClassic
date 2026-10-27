@@ -18,6 +18,7 @@
 #define TILES_HAS_SIMD 1
 #endif
 
+#include "base/platform.h"
 #include "base/zc_math.h"
 #include "core/zdefs.h"
 #include "zalleg/zsys.h"
@@ -28,7 +29,7 @@
 #include "zc/maps.h"
 #include "items.h"
 
-#if defined(IS_PLAYER) && !defined(__EMSCRIPTEN__)
+#if defined(IS_PLAYER) && ZC_HAS_MEMORY_PROTECTION
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -462,7 +463,7 @@ static byte* get_shared_blank_tile()
 #if defined(_WIN32)
 		if (void* ptr = VirtualAlloc(nullptr, 1024, MEM_RESERVE | MEM_COMMIT, PAGE_READONLY))
 			return (byte*)ptr;
-#elif !defined(__EMSCRIPTEN__) // Emscripten has no page protection.
+#elif ZC_HAS_MEMORY_PROTECTION
 		void* ptr = mmap(nullptr, 1024, PROT_READ, MAP_PRIVATE | MAP_ANON, -1, 0);
 		if (ptr != MAP_FAILED)
 			return (byte*)ptr;

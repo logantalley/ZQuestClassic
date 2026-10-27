@@ -23,6 +23,7 @@
 #include "zc/zasm_optimize.h"
 #include "zc/zasm_optimize_internal.h"
 #include "base/general.h"
+#include "base/platform.h"
 #include "base/util.h"
 #include "base/zapp.h"
 #include "core/zdefs.h"
@@ -70,7 +71,7 @@ static bool should_run_experimental_passes()
 
 static bool should_run_optimizer_in_parallel()
 {
-	static bool parallel = !is_web() && !get_flag_bool("-optimize-zasm-no-parallel").value_or(false) && !get_flag_int("-test-bisect").has_value();
+	static bool parallel = ZC_HAS_THREADS && !is_web() &&!get_flag_bool("-optimize-zasm-no-parallel").value_or(false) && !get_flag_int("-test-bisect").has_value();
 	return parallel;
 }
 

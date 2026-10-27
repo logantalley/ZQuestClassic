@@ -233,7 +233,7 @@ static void log_console(int32_t attributes, const char* str, bool is_error = fal
 
 	log_console(CConsoleLoggerEx::COLOR_RED | CConsoleLoggerEx::COLOR_INTENSITY | CConsoleLoggerEx::COLOR_BACKGROUND_BLACK, buf, true);
 	zapp_reporting_add_breadcrumb("error_fatal", buf);
-#ifndef __EMSCRIPTEN__
+#if ZC_HAS_NATIVE_DIALOGS
     if (!zscript_coloured_console.valid() && !is_headless())
     {
         al_show_native_message_box(all_get_display(), "ZQuest Classic: I AM ERROR", "", buf, NULL, ALLEGRO_MESSAGEBOX_ERROR);
