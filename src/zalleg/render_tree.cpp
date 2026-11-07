@@ -1,3 +1,4 @@
+#include <typeinfo>
 #include "render.h"
 #include "a5alleg.h"
 #include "allegro5/bitmap.h"
@@ -418,7 +419,11 @@ static void render_tree_draw_item(RenderTreeItem* rti, bool do_a4_only)
 		}
 	}
 
-	skip = do_a4_only;
+	// A plain sized container (ex: the root) has nothing that draws into the bitmap the
+	// framework made for it, so drawing it would only blend a fully transparent bitmap -
+	// not free without a GPU. (A display-only item's bitmap comes from outside.)
+	bool empty_container = managed && !rti->render_cb && typeid(*rti) == typeid(RenderTreeItem) && !bakes_children(rti);
+	skip = do_a4_only || empty_container;
 	if (!skip && rti->bitmap)
 	{
 		int w = al_get_bitmap_width(rti->bitmap);
