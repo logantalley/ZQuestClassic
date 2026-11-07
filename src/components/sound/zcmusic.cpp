@@ -54,15 +54,18 @@ std::filesystem::path resolve_case_insensitive(const std::filesystem::path& base
 {
 	std::filesystem::path exact_path = base / target;
 
-	if (std::filesystem::exists(exact_path))
+	// Paths that can't be read (some devices fail with other than "not found") are
+	// just missing.
+	std::error_code ec;
+	if (std::filesystem::exists(exact_path, ec))
 		return exact_path;
 
 	std::string target_lower = target;
 	ustrlwr(target_lower.data());
 
-	if (std::filesystem::exists(base) && std::filesystem::is_directory(base))
+	if (std::filesystem::is_directory(base, ec))
 	{
-		for (const auto& entry : std::filesystem::directory_iterator(base))
+		for (const auto& entry : std::filesystem::directory_iterator(base, ec))
 		{
 			std::u8string entry_lower_u8 = entry.path().filename().u8string();
 			std::string entry_lower(entry_lower_u8.begin(), entry_lower_u8.end());
