@@ -38,6 +38,13 @@
 #define ZC_HAS_MULTIPLE_WINDOWS 1
 #endif
 
+// Has a keyboard and mouse to drive the desktop-style dialogs (ex: the quest file browser).
+#if defined(__3DS__)
+#define ZC_HAS_DESKTOP_INPUT 0
+#else
+#define ZC_HAS_DESKTOP_INPUT 1
+#endif
+
 // Spreading work over threads pays off (more than one fast core).
 #if defined(__3DS__)
 #define ZC_HAS_THREADS 0

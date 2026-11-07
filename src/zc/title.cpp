@@ -1,5 +1,6 @@
 #include <cmath>
 #include <filesystem>
+#include "base/platform.h"
 #include <stdio.h>
 #include <ctype.h>
 #include <cstring>
@@ -1171,6 +1172,84 @@ static int32_t get_quest_info(zquestheader *header,char *str)
 	return 1;
 }
 
+#if !ZC_HAS_DESKTOP_INPUT
+// Without a keyboard or mouse, a list of the quests in the quest folder, drawn like the
+// name entry screen and driven by the game buttons. Returns a path relative to qstdir.
+static std::optional<std::string> pick_quest_with_buttons()
+{
+	std::vector<std::string> quests;
+	std::error_code ec;
+	for (const auto& entry : fs::directory_iterator(qstdir, ec))
+	{
+		std::string name = entry.path().filename().string();
+		std::string ext = entry.path().extension().string();
+		ustrlwr(ext.data());
+		if (ext == ".qst" && entry.is_regular_file(ec))
+			quests.push_back(name);
+	}
+	std::sort(quests.begin(), quests.end(), [](std::string a, std::string b) {
+		ustrlwr(a.data());
+		ustrlwr(b.data());
+		return a < b;
+	});
+
+	// Below the logo, which is drawn over the frame.
+	constexpr int rows = 14, max_chars = 28;
+	FONT* font = get_zc_font(font_zfont);
+	BITMAP* saved = create_bitmap_ex(8, framebuf->w, framebuf->h);
+	blit(framebuf, saved, 0, 0, 0, 0, framebuf->w, framebuf->h);
+
+	std::optional<std::string> result;
+	int sel = 0, top = 0;
+	while (Quit != qEXIT)
+	{
+		load_control_state();
+		int count = quests.size();
+		if (count && getInput(btnUp, INPUT_PRESS))
+			sel = (sel + count - 1) % count, sfx(WAV_CHIME);
+		else if (count && getInput(btnDown, INPUT_PRESS))
+			sel = (sel + 1) % count, sfx(WAV_CHIME);
+		else if (count && getInput(btnLeft, INPUT_PRESS))
+			sel = std::max(sel - rows, 0), sfx(WAV_CHIME);
+		else if (count && getInput(btnRight, INPUT_PRESS))
+			sel = std::min(sel + rows, count - 1), sfx(WAV_CHIME);
+		else if (count && (getInput(btnA, INPUT_PRESS) || getInput(btnS, INPUT_PRESS)))
+		{
+			result = quests[sel];
+			break;
+		}
+		else if (getInput(btnB, INPUT_PRESS) || (!count && getInput(btnA, INPUT_PRESS)))
+			break;
+
+		top = std::clamp(top, sel - rows + 1, sel);
+		clear_bitmap(framebuf);
+		textout_centre_ex(framebuf, font, "SELECT A QUEST", 128, 52, 1, 0);
+		if (!count)
+		{
+			textout_centre_ex(framebuf, font, "NO QUESTS FOUND.", 128, 96, 1, 0);
+			textout_centre_ex(framebuf, font, "COPY .QST FILES TO", 128, 120, 1, 0);
+			textout_centre_ex(framebuf, font, "/3DS/ZQUESTCLASSIC/QUESTS", 128, 136, 1, 0);
+		}
+		for (int i = top; i < std::min(top + rows, count); i++)
+		{
+			std::string name = quests[i];
+			if (name.size() > max_chars)
+				name = name.substr(0, max_chars - 1) + "~";
+			int y = 70 + (i - top) * 10;
+			textout_ex(framebuf, font, name.c_str(), 24, y, i == sel ? CSET(2) + 3 : 1, 0);
+			if (i == sel)
+				textout_ex(framebuf, font, ">", 12, y, CSET(2) + 3, 0);
+		}
+		textout_centre_ex(framebuf, font, count ? "A: PLAY   B: BACK" : "B: BACK", 128, 214, 1, 0);
+		advanceframe(true);
+	}
+
+	blit(saved, framebuf, 0, 0, 0, 0, framebuf->w, framebuf->h);
+	destroy_bitmap(saved);
+	return result;
+}
+#endif
+
 bool prompt_for_quest_path(std::string current_qstpath)
 {
 	if (!only_qstpath.empty())
@@ -1178,6 +1257,15 @@ bool prompt_for_quest_path(std::string current_qstpath)
 		strcpy(qstpath, only_qstpath.c_str());
 		return true;
 	}
+
+#if !ZC_HAS_DESKTOP_INPUT
+	if (auto quest = pick_quest_with_buttons())
+	{
+		snprintf(qstpath, 2048, "%s", quest->c_str());
+		return true;
+	}
+	return false;
+#endif
 
 	zquestheader h;
 	char infostr[200];
