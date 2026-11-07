@@ -33,6 +33,9 @@ extern "C" char* __wrap_getcwd(char* buf, size_t size)
 // needs ~20 MB of heap for combos alone, so keep the linear heap small.
 extern "C" u32 __ctru_linear_heap_size = 8 * 1024 * 1024;
 extern "C" u32 __ctru_heap_size;
+// The main thread's stack (taken from the heap) defaults to 32 KB, far below what ZC
+// assumes (1 MB on Windows, 5 MB on the web).
+extern "C" u32 __stacksize__ = 4 * 1024 * 1024;
 
 // Below this the player runs out of memory loading the engine's tables, before it can
 // show anything. A 64 MB app (the .3dsx from most launchers) has ~20 MB of heap; the .cia
