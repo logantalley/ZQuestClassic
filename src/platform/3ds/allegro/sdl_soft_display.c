@@ -84,7 +84,14 @@ void _al_sdl_display_event(SDL_Event *e)
       }
    }
    else if (e->type == SDL_QUIT) {
-      /* aptMainLoop() returned false: the system asked us to quit. */
+      /* aptMainLoop() returned false: the system asked us to quit. SDL posts
+       * this on every pump from then on, so report it once: a loop draining
+       * the queue pumps again with each read, and would never empty it.
+       */
+      static bool reported;
+      if (reported)
+         return;
+      reported = true;
       event.display.type = ALLEGRO_EVENT_DISPLAY_CLOSE;
       if (_al_vector_size(&s->displays) > 0)
          d = *(ALLEGRO_DISPLAY **)_al_vector_ref(&s->displays, 0);

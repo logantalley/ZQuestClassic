@@ -749,6 +749,13 @@ void set_debug(bool d)
 
 void hit_close_button()
 {
+#ifdef __3DS__
+	if (zc_3ds_closing())
+	{
+		Quit = qEXIT;
+		return;
+	}
+#endif
     close_button_quit=true;
     return;
 }

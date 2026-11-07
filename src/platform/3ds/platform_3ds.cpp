@@ -180,3 +180,8 @@ void zc_3ds_init()
 		}
 	}
 }
+
+bool zc_3ds_closing()
+{
+	return aptShouldClose();
+}

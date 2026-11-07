@@ -5,4 +5,8 @@
 // directory, and fills it from RomFS. Undone at exit.
 void zc_3ds_init();
 
+// The system is closing the app (ex: Close in the HOME menu). It must exit promptly, without
+// asking anything: carrying on (a "quit?" prompt still drawing) can hang the console.
+bool zc_3ds_closing();
+
 #endif
