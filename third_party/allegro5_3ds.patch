@@ -56,6 +56,26 @@ index a6ba24af3..cfc918acc 100644
    export(EXPORT ${PKG_TARGETS_NAME}
      FILE "${PKG_GENERATED_DIR}/${PKG_NAME}Targets.cmake"
      NAMESPACE ${PKG_NAME}::
+diff --git a/addons/audio/sdl_audio.c b/addons/audio/sdl_audio.c
+index 777324259..2cb8fc12b 100644
+--- a/addons/audio/sdl_audio.c
++++ b/addons/audio/sdl_audio.c
+@@ -77,7 +77,15 @@ static int sdl_allocate_voice(ALLEGRO_VOICE *voice)
+    want.format = allegro_format_to_sdl(voice->depth);
+    want.channels = al_get_channel_count(voice->chan_conf);
+    // TODO: Should make this configurable somehow
++#ifdef __3DS__
++   /* Each callback must be filled from the streams' queued fragments: more
++    * than those hold (ex: ZC's 3x1024 legacy mixer stream) plays as silence.
++    * The DSP keeps three of these queued.
++    */
++   want.samples = 1024;
++#else
+    want.samples = 4096;
++#endif
+    want.callback = audio_callback;
+    want.userdata = sv;
+ 
 diff --git a/src/memblit.c b/src/memblit.c
 index eb944537b..83ab4bc15 100644
 --- a/src/memblit.c
