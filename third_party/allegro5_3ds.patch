@@ -56,6 +56,134 @@ index a6ba24af3..cfc918acc 100644
    export(EXPORT ${PKG_TARGETS_NAME}
      FILE "${PKG_GENERATED_DIR}/${PKG_NAME}Targets.cmake"
      NAMESPACE ${PKG_NAME}::
+diff --git a/src/memblit.c b/src/memblit.c
+index eb944537b..83ab4bc15 100644
+--- a/src/memblit.c
++++ b/src/memblit.c
+@@ -131,6 +131,110 @@ static void _al_draw_bitmap_region_memory_fast(ALLEGRO_BITMAP *bitmap,
+ }
+ 
+ 
++#ifdef __3DS__
++static void _al_blend_bitmap_region_memory_1to1(ALLEGRO_BITMAP *src,
++   int sx, int sy, int sw, int sh, int dx, int dy, int alpha_shift,
++   bool premultiplied)
++{
++   ALLEGRO_BITMAP *dest = al_get_target_bitmap();
++   ALLEGRO_LOCKED_REGION *src_region, *dst_region;
++   int dw = sw, dh = sh, flags = 0;
++   int x, y;
++
++   CLIPPER(src, sx, sy, sw, sh, dest, dx, dy, dw, dh, 1, 1, flags)
++
++   if (!(src_region = al_lock_bitmap_region(src, sx, sy, sw, sh,
++         ALLEGRO_PIXEL_FORMAT_ANY, ALLEGRO_LOCK_READONLY)))
++      return;
++   if (!(dst_region = al_lock_bitmap_region(dest, dx, dy, sw, sh,
++         ALLEGRO_PIXEL_FORMAT_ANY, ALLEGRO_LOCK_READWRITE))) {
++      al_unlock_bitmap(src);
++      return;
++   }
++
++   for (y = 0; y < sh; y++) {
++      const uint32_t *s = (const uint32_t *)((const char *)src_region->data +
++         y * src_region->pitch);
++      uint32_t *d = (uint32_t *)((char *)dst_region->data +
++         y * dst_region->pitch);
++      for (x = 0; x < sw; x++) {
++         uint32_t sp = s[x];
++         uint32_t a = (sp >> alpha_shift) & 0xff;
++         if (a == 0xff)
++            d[x] = sp;
++         else if (sp && (a || premultiplied)) {
++            /* Every channel blends alike: out = src*k + dst*(1-a), where k
++             * is 1 premultiplied, else a (the alpha channel included).
++             */
++            uint32_t dp = d[x], out = 0;
++            int i;
++            for (i = 0; i < 32; i += 8) {
++               uint32_t sc = (sp >> i) & 0xff, dc = (dp >> i) & 0xff;
++               uint32_t c = (premultiplied ? sc * 255 : sc * a) +
++                  dc * (255 - a);
++               c = (c + 127) / 255;
++               out |= (c > 255 ? 255 : c) << i;
++            }
++            d[x] = out;
++         }
++      }
++   }
++
++   al_unlock_bitmap(src);
++   al_unlock_bitmap(dest);
++}
++
++/* Alpha blending a bitmap 1:1 onto another of the same 32-bit format: the
++ * general path rasterizes two triangles and blends every pixel in floats,
++ * which dominates a frame on a slow CPU. Opaque pixels are copied and empty
++ * ones skipped. Returns false when the draw is not of this kind.
++ */
++static bool _al_draw_bitmap_region_memory_blend(ALLEGRO_BITMAP *src,
++   ALLEGRO_COLOR tint, int sx, int sy, int sw, int sh,
++   int dx, int dy, int flags)
++{
++   ALLEGRO_BITMAP *dest = al_get_target_bitmap();
++   int op, src_mode, dst_mode, op_alpha, src_alpha, dst_alpha;
++   int format = al_get_bitmap_format(src);
++   int alpha_shift;
++   float xtrans, ytrans;
++
++   al_get_separate_bitmap_blender(&op,
++      &src_mode, &dst_mode, &op_alpha, &src_alpha, &dst_alpha);
++   if (op != ALLEGRO_ADD || op_alpha != ALLEGRO_ADD ||
++      dst_mode != ALLEGRO_INVERSE_ALPHA || dst_alpha != ALLEGRO_INVERSE_ALPHA ||
++      src_mode != src_alpha ||
++      (src_mode != ALLEGRO_ONE && src_mode != ALLEGRO_ALPHA))
++      return false;
++   if (tint.r != 1.0f || tint.g != 1.0f || tint.b != 1.0f || tint.a != 1.0f)
++      return false;
++   if (flags || src == dest || dest->parent == src ||
++      format != al_get_bitmap_format(dest))
++      return false;
++   if (!_al_transform_is_translation(al_get_current_transform(), &xtrans, &ytrans) ||
++      xtrans != (int)xtrans || ytrans != (int)ytrans)
++      return false;
++
++   switch (format) {
++      case ALLEGRO_PIXEL_FORMAT_ARGB_8888:
++      case ALLEGRO_PIXEL_FORMAT_ABGR_8888:
++      case ALLEGRO_PIXEL_FORMAT_ABGR_8888_LE:
++         alpha_shift = 24;
++         break;
++      case ALLEGRO_PIXEL_FORMAT_RGBA_8888:
++         alpha_shift = 0;
++         break;
++      default:
++         return false;
++   }
++
++   _al_blend_bitmap_region_memory_1to1(src, sx, sy, sw, sh,
++      dx + (int)xtrans, dy + (int)ytrans, alpha_shift,
++      src_mode == ALLEGRO_ONE);
++   return true;
++}
++#endif
++
+ void _al_draw_bitmap_region_memory(ALLEGRO_BITMAP *src,
+    ALLEGRO_COLOR tint,
+    int sx, int sy, int sw, int sh,
+@@ -153,6 +257,12 @@ void _al_draw_bitmap_region_memory(ALLEGRO_BITMAP *src,
+       return;
+    }
+ 
++#ifdef __3DS__
++   if (_al_draw_bitmap_region_memory_blend(src, tint, sx, sy, sw, sh,
++         dx, dy, flags))
++      return;
++#endif
++
+    /* We used to have special cases for translation/scaling only, but the
+     * general version received much more optimisation and ended up being
+     * faster.
 diff --git a/src/sdl/sdl_system.c b/src/sdl/sdl_system.c
 index 205b6d138..36fa12bec 100644
 --- a/src/sdl/sdl_system.c
