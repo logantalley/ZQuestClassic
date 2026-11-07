@@ -5,7 +5,6 @@
 
 combo_alias combo_aliases[MAXCOMBOALIASES];
 combo_pool combo_pools[MAXCOMBOPOOLS];
-extern vector<newcombo> combobuf;
 
 int comboa_lmasktotal(byte layermask)
 {

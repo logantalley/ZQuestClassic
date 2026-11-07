@@ -179,7 +179,7 @@ word count_combos()
     
     for(combos_used=MAXCOMBOS; combos_used>0; --combos_used)
     {
-        if(combobuf[combos_used-1].tile!=0)
+        if(combo_peek(combos_used-1).tile!=0)
         {
             break;
         }
@@ -198,7 +198,8 @@ void setup_combo_animations()
     {
         animated_combo_table[x][0]=y;
         
-        if((combobuf[x].frames>1 || combobuf[x].nextcombo != 0)&&!(combobuf[x].animflags &	AF_FRESH))
+        auto const& cmb = combo_peek(x);
+        if((cmb.frames>1 || cmb.nextcombo != 0)&&!(cmb.animflags &	AF_FRESH))
         {
             animated_combo_table4[y][0]=x;
             animated_combo_table4[y][1]=0;
@@ -220,9 +221,10 @@ void setup_combo_animations2()
     for(word x=0; x<MAXCOMBOS; ++x)
     {
         animated_combo_table2[x][0]=y;
-        animated_combo_table2[x][1]=combobuf[x].tile;
+        auto const& cmb = combo_peek(x);
+        animated_combo_table2[x][1]=cmb.tile;
         
-        if((combobuf[x].frames>1 || combobuf[x].nextcombo != 0)&&combobuf[x].animflags & AF_FRESH)
+        if((cmb.frames>1 || cmb.nextcombo != 0)&&cmb.animflags & AF_FRESH)
         {
             animated_combo_table24[y][0]=x;
             animated_combo_table24[y][1]=0;

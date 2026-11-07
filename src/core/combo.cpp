@@ -14,7 +14,7 @@ extern item_drop_object item_drop_sets[MAXITEMDROPSETS];
 extern std::map<int32_t, script_slot_data > genericmap;
 
 
-std::vector<newcombo> combobuf;
+combo_buffer combobuf;
 
 static string get_sign(combo_trigger const& trig, size_t flag_le, size_t flag_ge)
 {

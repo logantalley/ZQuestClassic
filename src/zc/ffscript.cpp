@@ -15907,7 +15907,7 @@ void FFScript::do_getcombobyname()
 	{
 		for(int32_t q = 0; q < MAXCOMBOS; q++)
 		{
-			if (the_string == combobuf[q].label)
+			if (the_string == combo_peek(q).label)
 			{
 				num = q;
 				break;

@@ -45,6 +45,14 @@
 #define ZC_HAS_DESKTOP_INPUT 1
 #endif
 
+// Too little memory for tables sized to the engine's maximums (ex: ~20 MB of combos): size
+// them to what a quest uses instead.
+#if defined(__3DS__)
+#define ZC_LOW_MEMORY 1
+#else
+#define ZC_LOW_MEMORY 0
+#endif
+
 // Spreading work over threads pays off (more than one fast core).
 #if defined(__3DS__)
 #define ZC_HAS_THREADS 0

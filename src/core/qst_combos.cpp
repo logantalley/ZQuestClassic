@@ -72,7 +72,7 @@ int32_t readcombos_old(word section_version, PACKFILE *f, zquestheader *Header, 
 
 	if (!should_skip)
 	for(int32_t q = start_combo; q < start_combo+max_combos; ++q)
-		combobuf[q].clear();
+		combo_clear(q);
 
 	if(version < 0x174)
 	{
@@ -501,7 +501,7 @@ int32_t readcombos_old(word section_version, PACKFILE *f, zquestheader *Header, 
 	{
 		for(int32_t tmpcounter=0; tmpcounter<MAXCOMBOS; tmpcounter++)
 		{
-			if(combobuf[tmpcounter].type==cHOOKSHOTONLY)
+			if(combo_peek(tmpcounter).type==cHOOKSHOTONLY)
 			{
 				combobuf[tmpcounter].type=cLADDERHOOKSHOT;
 			}
@@ -512,7 +512,7 @@ int32_t readcombos_old(word section_version, PACKFILE *f, zquestheader *Header, 
 	if(version == 0x210 && get_app_id() != App::zquest)
 	{
 		for(int32_t tmpcounter=0; tmpcounter<MAXCOMBOS; tmpcounter++)
-			if(combobuf[tmpcounter].type == cLADDERONLY)
+			if(combo_peek(tmpcounter).type == cLADDERONLY)
 				combobuf[tmpcounter].type = cLADDERHOOKSHOT;
 	}
 	
@@ -520,7 +520,7 @@ int32_t readcombos_old(word section_version, PACKFILE *f, zquestheader *Header, 
 	{
 		for(int32_t tmpcounter=0; tmpcounter<MAXCOMBOS; tmpcounter++)
 		{
-			switch(combobuf[tmpcounter].type)
+			switch(combo_peek(tmpcounter).type)
 			{
 			case cSLASH:
 				combobuf[tmpcounter].type=cSLASHTOUCHY;
@@ -560,7 +560,7 @@ int32_t readcombos_old(word section_version, PACKFILE *f, zquestheader *Header, 
 	{
 		for(int32_t tmpcounter=0; tmpcounter<MAXCOMBOS; tmpcounter++)
 		{
-			if (combobuf[tmpcounter].type == cWATER)
+			if (combo_peek(tmpcounter).type == cWATER)
 			{
 				combobuf[tmpcounter].c_attributes[0] = 4;
 			}
@@ -1399,7 +1399,7 @@ int32_t readcombos(PACKFILE *f, zquestheader *Header, word version, word build, 
 		init_combo_classes();
 
 		for(int32_t q = start_combo; q < start_combo+max_combos; ++q)
-			combobuf[q].clear();
+			combo_clear(q);
 	}
 	
 	if(version > 0x192) //Version info

@@ -1338,7 +1338,7 @@ void combodata_set_register(int32_t reg, int32_t value)
 // the script touched last.
 static int combo_id(newcombo* cmb)
 {
-	return cmb - combobuf.data();
+	return combo_index(cmb);
 }
 
 static ArrayRegistrar COMBODATTRIBUTES_registrar(COMBODATTRIBUTES, []{

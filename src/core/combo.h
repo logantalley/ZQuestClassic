@@ -2,12 +2,16 @@
 #define CORE_COMBO_H_
 
 #include "base/headers.h"
+#include "base/platform.h"
 #include "base/general.h"
 #include "base/containers.h"
 #include "core/flags.h"
 #include "core/weapon_data.h"
 #include "base/lazy_default.h"
 #include <functional>
+#include <vector>
+#include <memory>
+#include <array>
 
 namespace flags {
 enum lift_flags : uint8_t
@@ -501,7 +505,77 @@ enum //cCRUMBLE types
 	CMBTY_CRUMBLE_INEVITABLE,
 };
 
-extern std::vector<newcombo> combobuf;
+#if ZC_LOW_MEMORY
+// The combo table in pages allocated on first access: a full table is ~20 MB, and quests
+// use a fraction of it. Pages never move, so references stay valid. Reading without
+// allocating goes through combo_peek.
+class paged_combos
+{
+public:
+	static constexpr size_t page_size = COMBOS_PER_PAGE;
+
+	newcombo& operator[](size_t id)
+	{
+		auto& page = pages[id / page_size];
+		if (!page)
+			page = std::make_unique<std::array<newcombo, page_size>>();
+		return (*page)[id % page_size];
+	}
+	const newcombo& peek(size_t id) const
+	{
+		static const newcombo blank{};
+		auto& page = pages[id / page_size];
+		return page ? (*page)[id % page_size] : blank;
+	}
+	bool exists(size_t id) const { return pages[id / page_size] != nullptr; }
+	int index_of(const newcombo* cmb) const
+	{
+		for (size_t p = 0; p < pages.size(); ++p)
+			if (pages[p] && cmb >= pages[p]->data() && cmb < pages[p]->data() + page_size)
+				return p * page_size + (cmb - pages[p]->data());
+		return -1;
+	}
+	size_t size() const { return count; }
+	void resize(size_t n) { count = n; pages.resize((n + page_size - 1) / page_size); }
+	void clear() { pages.clear(); count = 0; }
+
+private:
+	std::vector<std::unique_ptr<std::array<newcombo, page_size>>> pages;
+	size_t count = 0;
+};
+using combo_buffer = paged_combos;
+#else
+using combo_buffer = std::vector<newcombo>;
+#endif
+extern combo_buffer combobuf;
+
+// For code that visits the whole table, so that untouched combos stay unallocated where
+// the table is paged: a read that allocates nothing, and a clear that skips blank combos.
+inline const newcombo& combo_peek(int32_t id)
+{
+#if ZC_LOW_MEMORY
+	return combobuf.peek(id);
+#else
+	return combobuf[id];
+#endif
+}
+inline void combo_clear(int32_t id)
+{
+#if ZC_LOW_MEMORY
+	if (!combobuf.exists(id))
+		return;
+#endif
+	combobuf[id].clear();
+}
+// The id of a combo in combobuf.
+inline int32_t combo_index(const newcombo* cmb)
+{
+#if ZC_LOW_MEMORY
+	return combobuf.index_of(cmb);
+#else
+	return cmb - combobuf.data();
+#endif
+}
 
 bool is_push_flag(int flag, optional<int> dir = nullopt);
 

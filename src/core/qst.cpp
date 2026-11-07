@@ -1128,7 +1128,7 @@ const byte* legacy_skip_flags;
 
 void clear_combo(int32_t i)
 {
-	combobuf[i].clear();
+	combo_clear(i);
 }
 
 void clear_combos()
