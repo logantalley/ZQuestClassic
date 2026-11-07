@@ -2134,7 +2134,11 @@ bool sprite_list::add(sprite *s)
     }
     
     s->registerUID();
-    sprites[count++]=s;
+    if(count == (int32_t)sprites.size())
+        sprites.push_back(s);
+    else
+        sprites[count] = s;
+    ++count;
     return true;
 }
 

@@ -1,6 +1,7 @@
 #ifndef SPRITE_H_
 #define SPRITE_H_
 
+#include <vector>
 #include "zalleg/zalleg.h"
 #include "base/headers.h"
 #include "core/zdefs.h"
@@ -233,7 +234,9 @@ struct SpriteSorter
 };
 class sprite_list
 {
-    sprite *sprites[SLMAX];
+    // Grown as sprites are added: a list is capped far below SLMAX (255 by default,
+    // at most 1024 from scripts), and a fixed SLMAX array is 2-4 MB per list.
+    std::vector<sprite*> sprites;
     int32_t count;
 	int32_t active_iterator;
     bool delete_active_iterator;
