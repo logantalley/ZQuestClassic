@@ -167,6 +167,10 @@ void zc_3ds_init()
 	sync_dir("romfs:/", "", update);
 	mkdir("quests", 0777);
 	mkdir("saves", 0777);
+	// Quest loading goes through temp files; std::filesystem::temp_directory_path() throws
+	// without a TMPDIR that exists.
+	mkdir("tmp", 0777);
+	setenv("TMPDIR", "/3ds/zquestclassic/tmp", 1);
 	if (update)
 	{
 		if (FILE* f = fopen(STAMP_FILE, "wb"))
