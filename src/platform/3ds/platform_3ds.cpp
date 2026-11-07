@@ -162,8 +162,13 @@ void zc_3ds_init()
 	chdir(DATA_DIR);
 	std::set_new_handler(on_out_of_memory);
 
-	// Refresh resources once per build.
-	bool update = read_file(STAMP_FILE) != getVersionString();
+	// Refresh resources whenever they change. The staged RomFS carries a hash of its
+	// contents (packaging/3ds/stage_romfs.py): the version string is the same across
+	// local and CI builds.
+	std::string romfs_id = read_file("romfs:/romfs_id.txt");
+	if (romfs_id.empty())
+		romfs_id = getVersionString();
+	bool update = read_file(STAMP_FILE) != romfs_id;
 	sync_dir("romfs:/", "", update);
 	mkdir("quests", 0777);
 	mkdir("saves", 0777);
@@ -175,7 +180,7 @@ void zc_3ds_init()
 	{
 		if (FILE* f = fopen(STAMP_FILE, "wb"))
 		{
-			fputs(getVersionString(), f);
+			fputs(romfs_id.c_str(), f);
 			fclose(f);
 		}
 	}

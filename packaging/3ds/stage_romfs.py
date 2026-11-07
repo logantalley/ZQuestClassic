@@ -1,10 +1,12 @@
 # Stages the 3DS RomFS: the read-only subset of resources/ that zplayer loads
 # at runtime. Configs are preprocessed like scripts/package.py does (the
-# default of every `#?` directive is kept), and resources/3ds/zc.cfg is applied
-# over base_config/zc.cfg.
+# default of every `#?` directive is kept), resources/3ds/zc.cfg is applied
+# over base_config/zc.cfg, and the rest of resources/3ds replaces or adds files
+# (ex: the title logos at the size they are shown, the theme as streamed Ogg).
 #
 #   python stage_romfs.py <resources dir> <romfs dir>
 
+import hashlib
 import re
 import shutil
 import sys
@@ -29,6 +31,8 @@ INCLUDE = [
 EXCLUDE = [
 	'assets/zc/ZC_Icon_Medium_Editor.png',
 	'assets/zc/ZC_Icon_Medium_Launcher.png',
+	# Replaced by resources/3ds/assets/zc/ZC_Forever_HD.ogg.
+	'assets/zc/ZC_Forever_HD.mp3',
 ]
 
 
@@ -101,6 +105,20 @@ def main():
 				dest.write_text(text)
 			else:
 				shutil.copy2(path, dest)
+
+	platform_dir = resources_dir / '3ds'
+	for path in platform_dir.rglob('*'):
+		if path.is_file() and path.name != 'zc.cfg':
+			dest = romfs_dir / path.relative_to(platform_dir)
+			dest.parent.mkdir(parents=True, exist_ok=True)
+			shutil.copy2(path, dest)
+
+	# The player refreshes its copy of these on the SD card when this changes.
+	digest = hashlib.sha1()
+	for path in sorted(p for p in romfs_dir.rglob('*') if p.is_file()):
+		digest.update(path.relative_to(romfs_dir).as_posix().encode() + b'\0')
+		digest.update(path.read_bytes())
+	(romfs_dir / 'romfs_id.txt').write_text(digest.hexdigest())
 
 
 if __name__ == '__main__':

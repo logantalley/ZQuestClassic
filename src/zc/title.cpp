@@ -1730,7 +1730,10 @@ static void actual_titlescreen()
 	}
 	else
 	{
-		try_zcmusic("assets/zc/ZC_Forever_HD.mp3", "", 0, 0, starting_volume = get_emusic_volume() * 0.7);
+		// A build may ship the theme as Ogg instead (see packaging/3ds): it streams from
+		// disk, where an MP3 is held in memory whole.
+		const char* theme = exists("assets/zc/ZC_Forever_HD.ogg") ? "assets/zc/ZC_Forever_HD.ogg" : "assets/zc/ZC_Forever_HD.mp3";
+		try_zcmusic(theme, "", 0, 0, starting_volume = get_emusic_volume() * 0.7);
 	}
 
 	loadfullpal();
