@@ -86,15 +86,7 @@ enum class rpos_t : int32_t {
 enum {ENC_METHOD_192B104=0, ENC_METHOD_192B105, ENC_METHOD_192B185, ENC_METHOD_211B9, ENC_METHOD_211B18, ENC_METHOD_MAX};
 
 //Moved these OS-dependent defs from 'ffasm.cpp', to be global.
-#ifdef ALLEGRO_MACOSX
-#define strnicmp strncasecmp
-#endif
-
-#ifdef ALLEGRO_MACOSX
-#define strnicmp strncasecmp
-#endif
-
-#ifdef ALLEGRO_LINUX
+#if !defined(_WIN32) && !defined(strnicmp)
 #define strnicmp strncasecmp
 #endif
 

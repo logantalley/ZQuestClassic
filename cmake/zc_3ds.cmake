@@ -63,6 +63,9 @@ string(APPEND CMAKE_CXX_FLAGS " -include ${zc_3ds_stdint}")
 # g++ defines this on glibc; without it, newlib's strict C++ mode hides POSIX
 # (strcasecmp, fileno, usleep, ...).
 string(APPEND CMAKE_CXX_FLAGS " -D_GNU_SOURCE")
+# GCC notes a C++17 ABI change for std::pair on ARM in every TU; ZC links
+# nothing built by an older GCC.
+string(APPEND CMAKE_CXX_FLAGS " -Wno-psabi")
 
 # Release builds go through the same section GC as the desktop.
 add_link_options("$<$<CONFIG:Release,RelWithDebInfo>:-Wl,--gc-sections>")

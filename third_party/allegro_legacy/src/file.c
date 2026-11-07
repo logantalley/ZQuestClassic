@@ -35,7 +35,7 @@
    #include <sys/stat.h>
 #endif
 
-#ifdef ALLEGRO_LEGACY_UNIX
+#if defined(ALLEGRO_LEGACY_UNIX) && !defined(__3DS__)
    #include <pwd.h>                 /* for tilde expansion */
 #endif
 
@@ -187,6 +187,7 @@ char *canonicalize_filename(char *dest, AL_CONST char *filename, int size)
 	    if (home)
 	       home = _al_strdup(home);
 	 }
+	 #ifndef __3DS__ /* newlib has no passwd database */
 	 else {
 	    /* harder */
 	    char *username = (char *)tail, *ascii_username, *ch;
@@ -227,6 +228,7 @@ char *canonicalize_filename(char *dest, AL_CONST char *filename, int size)
 	       endpwent();
 	    }
 	 }
+	 #endif
 
 	 /* If we got a home directory, prepend it to the filename. Otherwise
 	  * we leave the filename alone, like bash but not tcsh; bash is better
