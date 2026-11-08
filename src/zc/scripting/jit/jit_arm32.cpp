@@ -71,7 +71,6 @@ constexpr int32_t ctx_off(size_t member_offset)
 
 void debug_pre_command(int32_t pc, uint32_t sp)
 {
-	extern refInfo *ri;
 
 	ri->pc = pc;
 	ri->sp = sp;
@@ -81,7 +80,6 @@ void debug_pre_command(int32_t pc, uint32_t sp)
 
 int32_t get_register_and_restore_sp(int32_t arg, uint32_t sp, pc_t pc)
 {
-	extern refInfo *ri;
 
 	ri->pc = pc;
 	ri->sp = sp;
@@ -90,7 +88,6 @@ int32_t get_register_and_restore_sp(int32_t arg, uint32_t sp, pc_t pc)
 
 int32_t get_register_jit(int32_t arg, pc_t pc)
 {
-	extern refInfo *ri;
 
 	ri->pc = pc;
 	return get_register(arg);
@@ -98,7 +95,6 @@ int32_t get_register_jit(int32_t arg, pc_t pc)
 
 void set_register_and_restore_sp(int32_t arg, int32_t value, uint32_t sp, pc_t pc)
 {
-	extern refInfo *ri;
 
 	ri->pc = pc;
 	ri->sp = sp;
@@ -107,7 +103,6 @@ void set_register_and_restore_sp(int32_t arg, int32_t value, uint32_t sp, pc_t p
 
 void set_register_jit(int32_t arg, int32_t value, pc_t pc)
 {
-	extern refInfo *ri;
 
 	ri->pc = pc;
 	set_register(arg, value);
@@ -115,7 +110,6 @@ void set_register_jit(int32_t arg, int32_t value, pc_t pc)
 
 void set_guarded_register(int32_t arg, int32_t value, pc_t pc)
 {
-	extern refInfo *ri;
 
 	ri->pc = pc;
 	do_set(arg, value);
