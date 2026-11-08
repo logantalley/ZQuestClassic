@@ -156,6 +156,14 @@ struct ReplayState
 	// Memory ownership for zero-copy string_views.
 	std::string replay_file_buffer;
 	std::deque<std::string> string_arena;
+	// Strings of the steps in record_log, each with the index of its step (see
+	// record_log_dropped), so they can be freed along with it.
+	std::deque<std::pair<size_t, std::string>> record_string_arena;
+	// How many steps were dropped from the front of record_log. In assert mode, steps that
+	// matched replay_log are dropped once their frame is over (replay_log has the same steps),
+	// so that long replays fit in memory. Index i of the whole record log is
+	// record_log[i - record_log_dropped].
+	size_t record_log_dropped = 0;
 
 	std::array<FramebufHistoryEntry, ASSERT_SNAPSHOT_BUFFER> framebuf_history = {};
 	int framebuf_history_index = 0;
@@ -511,6 +519,45 @@ static std::string print_step(const ReplayStepVariant& v)
 
 static std::vector<ReplayStepVariant> replay_log;
 static std::vector<ReplayStepVariant> record_log;
+
+// The whole record log, including steps dropped from record_log (see record_log_dropped).
+static size_t record_log_size()
+{
+	return rs.record_log_dropped + record_log.size();
+}
+
+static const ReplayStepVariant& record_log_at(size_t i)
+{
+	return i < rs.record_log_dropped ? replay_log[i] : record_log[i - rs.record_log_dropped];
+}
+
+// Keeps a string for the step about to be added to record_log.
+static std::string_view record_string(std::string str)
+{
+	rs.record_string_arena.emplace_back(record_log_size(), std::move(str));
+	return rs.record_string_arena.back().second;
+}
+
+// Assert mode: forgets the recorded steps that matched replay_log, once no more can be
+// added to their frame (the last step of the current frame may still change, see
+// replay_set_rng_seed). Done in batches, as it shifts what's left of record_log.
+static void drop_matched_record_steps()
+{
+	if (rs.mode != ReplayMode::Assert || rs.has_assert_failed)
+		return;
+
+	size_t n = 0;
+	while (rs.record_log_dropped + n < rs.assert_current_index && n < record_log.size() &&
+		get_frame(record_log[n]) < rs.frame_count)
+		n++;
+	if (n < 4096)
+		return;
+
+	record_log.erase(record_log.begin(), record_log.begin() + n);
+	rs.record_log_dropped += n;
+	while (!rs.record_string_arena.empty() && rs.record_string_arena.front().first < rs.record_log_dropped)
+		rs.record_string_arena.pop_front();
+}
 
 static int get_rng_index(zc_randgen *rng)
 {
@@ -1213,10 +1260,16 @@ static bool load_replay(std::string& buffer, std::map<std::string, std::string>&
 static void save_replay(std::string filename, const std::vector<ReplayStepVariant> &log)
 {
     // Compare addresses since record_log and replay_log are statically assigned via std::move if roundtrip checking applies
+    bool is_record_log = &log == &record_log;
     bool insert_baseline_annotations =
         rs.has_assert_failed &&
         filename.find(".roundtrip") != std::string::npos &&
-        &log == &record_log;
+        is_record_log;
+    // Steps dropped from record_log are the same as replay_log's.
+    size_t log_size = is_record_log ? record_log_size() : log.size();
+    auto log_at = [&](size_t i) -> const ReplayStepVariant& {
+        return is_record_log ? record_log_at(i) : log[i];
+    };
 
     std::time_t ct = std::time(0);
     replay_set_meta("time_updated", strtok(ctime(&ct), "\n"));
@@ -1226,14 +1279,14 @@ static void save_replay(std::string filename, const std::vector<ReplayStepVarian
     else
         replay_set_meta("version", rs.initial_version);
     replay_set_meta("frames", rs.frame_count);
-	replay_set_meta("length", log.size());
+	replay_set_meta("length", log_size);
 
     std::ofstream out(filename, std::ios::binary);
     for (auto it : rs.meta_map)
         out << fmt::format("{} {} {}", TypeMeta, it.first, it.second) << '\n';
-    for (size_t i = 0; i < log.size(); i++)
+    for (size_t i = 0; i < log_size; i++)
     {
-        auto& step = log[i];
+        auto& step = log_at(i);
         std::string step_as_string = print_step(step);
         out << step_as_string;
         if (insert_baseline_annotations && i < replay_log.size())
@@ -1247,12 +1300,12 @@ static void save_replay(std::string filename, const std::vector<ReplayStepVarian
         }
         out << '\n';
     }
-    if (insert_baseline_annotations && replay_log.size() > log.size())
+    if (insert_baseline_annotations && replay_log.size() > log_size)
     {
-        size_t num_extra = replay_log.size() - log.size();
+        size_t num_extra = replay_log.size() - log_size;
         size_t num_extra_to_print_limit = 20;
         size_t num_extra_to_print = std::min(num_extra, num_extra_to_print_limit);
-        for (size_t i = log.size(); i < log.size() + num_extra_to_print; i++)
+        for (size_t i = log_size; i < log_size + num_extra_to_print; i++)
         {
             auto& replay_log_step = replay_log[i];
             out << std::string(60, ' ')
@@ -1305,8 +1358,8 @@ static void save_result(bool stopped = false, bool changed = false)
 	out << fmt::format("zc_version: {}", getVersionString()) << '\n';
 	if (replay_is_replaying() && !replay_log.empty())
 		out << fmt::format("replay_log_frames: {}", get_frame(replay_log.back())) << '\n';
-	if (replay_is_recording() && !record_log.empty())
-		out << fmt::format("record_log_frames: {}", get_frame(record_log.back())) << '\n';
+	if (replay_is_recording() && record_log_size())
+		out << fmt::format("record_log_frames: {}", get_frame(record_log_at(record_log_size() - 1))) << '\n';
 	out << fmt::format("frame: {}", rs.frame_count) << '\n';
 	out << fmt::format("fps: {}", fps) << '\n';
 	if (stopped || rs.has_assert_failed)
@@ -1390,11 +1443,11 @@ static void check_assert()
 
     while (rs.assert_current_index < replay_log.size() && get_frame(replay_log[rs.assert_current_index]) <= rs.frame_count)
     {
-        if (rs.assert_current_index >= record_log.size())
+        if (rs.assert_current_index >= record_log_size())
             break;
 
         auto& replay_step = replay_log[rs.assert_current_index];
-        auto& record_step = record_log[rs.assert_current_index];
+        auto& record_step = record_log_at(rs.assert_current_index);
         if (!steps_are_equal(replay_step, record_step))
         {
             rs.has_assert_failed = true;
@@ -1422,6 +1475,8 @@ static void check_assert()
 
         rs.assert_current_index++;
     }
+
+    drop_matched_record_steps();
 }
 
 static void maybe_take_snapshot()
@@ -1992,7 +2047,7 @@ void replay_stop(bool aborted)
     if (rs.mode == ReplayMode::Assert && !aborted)
     {
         check_assert();
-        bool log_size_mismatch = replay_log.size() != record_log.size();
+        bool log_size_mismatch = replay_log.size() != record_log_size();
         rs.has_assert_failed |= log_size_mismatch || rs.has_rng_desynced;
         if (rs.has_assert_failed)
         {
@@ -2000,7 +2055,7 @@ void replay_stop(bool aborted)
         }
         if (log_size_mismatch)
         {
-            fprintf(stderr, "replay_log size is %zu but record_log size is %zu\n", replay_log.size(), record_log.size());
+            fprintf(stderr, "replay_log size is %zu but record_log size is %zu\n", replay_log.size(), record_log_size());
         }
 
         save_result(true);
@@ -2122,8 +2177,8 @@ void replay_step_comment(std::string comment)
     if (replay_is_recording())
     {
         util::trimstr_trailing(comment);
-        rs.string_arena.push_back(std::move(comment));
-        record_log.emplace_back(std::in_place_type<CommentReplayStep>, rs.frame_count, rs.string_arena.back());
+        std::string_view comment_view = record_string(std::move(comment));
+        record_log.emplace_back(std::in_place_type<CommentReplayStep>, rs.frame_count, comment_view);
         // Not necessary to call this here, but helps to halt the program exactly when an unexpected
         // comment occurs instead of at the next call to replay_poll.
         if (rs.mode == ReplayMode::Assert)
@@ -2317,8 +2372,8 @@ void replay_step_cheat(Cheat cheat, int arg1, int arg2, std::string arg3)
 {
 	if (replay_is_recording())
 	{
-		rs.string_arena.push_back(std::move(arg3));
-		record_log.emplace_back(std::in_place_type<CheatReplayStep>, rs.frame_count, cheat, arg1, arg2, rs.string_arena.back());
+		std::string_view arg3_view = record_string(std::move(arg3));
+		record_log.emplace_back(std::in_place_type<CheatReplayStep>, rs.frame_count, cheat, arg1, arg2, arg3_view);
 	}
 }
 
@@ -2336,10 +2391,8 @@ void replay_step_meta(std::string key, std::string value)
 	// Nothing else is supported right now.
 	CHECK(key == "version");
 
-	rs.string_arena.push_back(key);
-	std::string_view key_view = rs.string_arena.back();
-	rs.string_arena.push_back(value);
-	std::string_view value_view = rs.string_arena.back();
+	std::string_view key_view = record_string(key);
+	std::string_view value_view = record_string(value);
 	record_log.emplace_back(std::in_place_type<MetaReplayStep>, rs.frame_count, key_view, value_view);
 	std::get<MetaReplayStep>(record_log.back()).run();
 }
