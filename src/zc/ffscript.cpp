@@ -4191,30 +4191,38 @@ void do_bitwisenot32(const bool v)
 	set_register(sarg1, (~temp));
 }
 
+// Shift counts are taken mod 32, as x86, ARM64 and wasm 32-bit shifts do - a C shift by 32 or
+// more is undefined, and 32-bit ARM (the 3DS) would use the count's low byte instead, so
+// scripts must not depend on the host.
+static int32_t shift_count(int32_t value)
+{
+	return (value / 10000) & 31;
+}
+
 void do_lshift(const bool v)
 {
-	int32_t temp = SH::get_arg(sarg2, v) / 10000;
+	int32_t temp = shift_count(SH::get_arg(sarg2, v));
 	int32_t temp2 = get_register(sarg1) / 10000;
 	set_register(sarg1, (temp2 << temp) * 10000);
 }
 
 void do_lshift32(const bool v)
 {
-	int32_t temp = SH::get_arg(sarg2, v) / 10000;
+	int32_t temp = shift_count(SH::get_arg(sarg2, v));
 	int32_t temp2 = get_register(sarg1);
 	set_register(sarg1, (temp2 << temp));
 }
 
 void do_rshift(const bool v)
 {
-	int32_t temp = SH::get_arg(sarg2, v) / 10000;
+	int32_t temp = shift_count(SH::get_arg(sarg2, v));
 	int32_t temp2 = get_register(sarg1) / 10000;
 	set_register(sarg1, (temp2 >> temp) * 10000);
 }
 
 void do_rshift32(const bool v)
 {
-	int32_t temp = SH::get_arg(sarg2, v) / 10000;
+	int32_t temp = shift_count(SH::get_arg(sarg2, v));
 	int32_t temp2 = get_register(sarg1);
 	set_register(sarg1, (temp2 >> temp));
 }
