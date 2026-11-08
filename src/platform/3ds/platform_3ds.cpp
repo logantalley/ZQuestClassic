@@ -145,10 +145,11 @@ static void copy_file(const std::string& from, const std::string& to)
 	fclose(in);
 }
 
-// Files the player may change, which are only ever seeded.
-static bool is_user_file(const std::string& name)
+// Files the player may change, which are only ever seeded: the top-level configs. Their
+// defaults (base_config/zc.cfg, ...) are resources like any other.
+static bool is_user_file(const std::string& path)
 {
-	return name == "zc.cfg" || name == "controls.cfg";
+	return path == "zc.cfg" || path == "controls.cfg";
 }
 
 // Copies the `from` tree into `to` (both empty or ending in '/'). Missing files are always
@@ -171,7 +172,7 @@ static void sync_dir(const std::string& from, const std::string& to, bool update
 			continue;
 		if (S_ISDIR(st.st_mode))
 			sync_dir(src + "/", dst + "/", update);
-		else if (!exists(dst) || (update && !is_user_file(name)))
+		else if (!exists(dst) || (update && !is_user_file(dst)))
 			copy_file(src, dst);
 	}
 	closedir(dir);

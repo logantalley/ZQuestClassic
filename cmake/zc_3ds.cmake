@@ -13,10 +13,10 @@ if(NOT NINTENDO_3DS)
 endif()
 
 # Only zplayer is built, and nothing that needs an OS (processes, sockets,
-# native dialogs, crash handlers). The arm32 JIT backend is still in the works
-# (docs/jit-arm32.md): opt in with -DJIT_BACKEND=arm32.
+# native dialogs, crash handlers). Scripts use the arm32 JIT
+# (docs/jit-arm32.md); -DJIT_BACKEND=none builds without it.
 if(JIT_BACKEND STREQUAL "default")
-	set(JIT_BACKEND "none" CACHE STRING "" FORCE)
+	set(JIT_BACKEND "arm32" CACHE STRING "" FORCE)
 endif()
 foreach(var WANT_ZUPDATER WANT_SENTRY WANT_WEBSOCKETS WANT_NFD WANT_ZC_TESTS)
 	set(${var} FALSE CACHE BOOL "" FORCE)
