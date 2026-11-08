@@ -291,7 +291,12 @@ def main():
         with open(allegro_log, 'rb') as f:
             f.seek(log_start)
             lines = f.read().decode(errors='replace').splitlines()
-        print('\n'.join(lines[-args.log_lines :]))
+        print('\n'.join(lines[len(lines) - args.log_lines :] if args.log_lines > 0 else []))
+    # Replay results (-replay-output-dir defaults to the replay's folder).
+    for result in sorted(app_dir.rglob('*.result.txt')):
+        if result.stat().st_mtime >= start:
+            print(f'==== {result.relative_to(app_dir)} ====')
+            print(result.read_text(errors='replace'), end='')
     error_log = app_dir / 'error.log'
     if error_log.exists():
         print('==== error.log ====')
