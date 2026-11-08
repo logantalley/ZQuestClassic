@@ -177,7 +177,6 @@ public:
 	void bkpt(uint16_t imm = 0);
 
 private:
-	// The private members are a suggestion; the implementation may change them freely.
 	struct Fixup
 	{
 		size_t at;
@@ -186,12 +185,30 @@ private:
 	};
 
 	void set_error(std::string message);
+	bool check_reg(Reg r);
+	bool check_cond(Cond c);
+	bool check_label(Label label);
+	uint32_t word_at(size_t at) const;
+	void patch(size_t at, uint32_t word);
+
+	bool shift_operand(Reg rm, Shift shift, int amount, uint32_t& out);
+	void dp(uint32_t op, Cond c, bool s, Reg rd, Reg rn, uint32_t operand2, bool imm);
+	void dp_reg(uint32_t op, Reg rd, Reg rn, Reg rm, Shift shift, int amount, Cond c, bool s);
+	bool dp_try_imm(uint32_t op, Reg rd, Reg rn, uint32_t imm, Cond c, bool s);
+	void dp3_imm(uint32_t op, Reg rd, Reg rn, uint32_t imm, Reg scratch, Cond c, bool s);
+	static int mov_imm_length(uint32_t value);
+	void mull(uint32_t base, Reg rdlo, Reg rdhi, Reg rm, Reg rs, Cond c);
+	void mem_word(bool load, bool byte, Reg rt, Reg rn, int32_t offset, Cond c);
+	void mem_half(bool load, uint32_t sh, Reg rt, Reg rn, int32_t offset, Cond c);
+	void mem_reg(bool load, Reg rt, Reg rn, Reg rm, int lsl, bool subtract, Cond c);
+	void mem_far(bool load, Reg rt, Reg rn, int32_t offset, Reg scratch);
+	void branch(uint32_t base, Label target, Cond c);
 
 	std::vector<uint8_t> buffer;
 	std::vector<int64_t> label_offsets; // -1 while unbound
 	std::vector<Fixup> fixups;
+	// Comments by instruction offset. Mnemonics are not stored: listing() disassembles.
 	std::vector<std::pair<size_t, std::string>> comments;
-	std::vector<std::pair<size_t, std::string>> mnemonics;
 	std::string pending_comment;
 	std::string error_message;
 	bool finalized = false;
