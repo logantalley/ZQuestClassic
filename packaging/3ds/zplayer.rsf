@@ -140,6 +140,8 @@ AccessControlInfo:
     StopDma: 86
     GetDmaState: 87
     RestartDma: 88
+    # The arm32 JIT maps its code executable (src/platform/3ds/jit_memory_3ds.cpp).
+    ControlProcessMemory: 112
     Backdoor: 123
 
   ServiceAccessControl:

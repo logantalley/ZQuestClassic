@@ -1,4 +1,5 @@
 #include "platform/3ds/platform_3ds.h"
+#include "base/util.h"
 #include "base/version.h"
 
 #include <3ds.h>
@@ -10,11 +11,37 @@
 #include <string>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <vector>
 
 // The game reads its resources from the working directory and writes its config and saves
 // next to them. Resources ship read-only in RomFS, so they are copied here.
 #define DATA_DIR "sdmc:/3ds/zquestclassic"
 #define STAMP_FILE ".romfs_version"
+#define ARGS_FILE DATA_DIR "/args.txt"
+#define STDOUT_FILE DATA_DIR "/stdout.txt"
+#define EXIT_FILE DATA_DIR "/exit.txt"
+
+// Set when the command line came from args.txt: a script is waiting for the exit code.
+static bool report_exit_code;
+
+// Every exit path (zc_exit, Z_error_fatal, returning from main) ends in exit(). Needs
+// -Wl,--wrap=exit (see CMakeLists.txt).
+extern "C" void __real_exit(int code) __attribute__((noreturn));
+extern "C" void __wrap_exit(int code)
+{
+	if (report_exit_code)
+	{
+		printf("zplayer exit code: %d\n", code);
+		fflush(stdout);
+		fflush(stderr);
+		if (FILE* f = fopen(EXIT_FILE, "wb"))
+		{
+			fprintf(f, "%d\n", code);
+			fclose(f);
+		}
+	}
+	__real_exit(code);
+}
 
 // libctru reports the working directory with its device ("sdmc:/..."), which neither
 // std::filesystem nor Allegro treat as absolute. Drop it; "/..." resolves against the same
@@ -150,7 +177,42 @@ static void sync_dir(const std::string& from, const std::string& to, bool update
 	closedir(dir);
 }
 
-void zc_3ds_init()
+// Appends the arguments in args.txt, if any, to the command line.
+static void read_args_file(int& argc, char**& argv)
+{
+	if (!exists(ARGS_FILE))
+		return;
+
+	std::vector<std::string> args = util::split_args(read_file(ARGS_FILE));
+	// Launched without a path (ex: some emulators), there may be no argv[0].
+	int base = argc > 0 ? argc : 1;
+	char** new_argv = new char*[base + args.size() + 1];
+	new_argv[0] = argc > 0 ? argv[0] : strdup("zplayer");
+	for (int i = 1; i < argc; i++)
+		new_argv[i] = argv[i];
+	for (size_t i = 0; i < args.size(); i++)
+		new_argv[base + i] = strdup(args[i].c_str());
+	argc = base + args.size();
+	new_argv[argc] = nullptr;
+	argv = new_argv;
+
+	// stderr shares stdout's file descriptor (and so its offset), so their output
+	// interleaves in order. (The SD card driver ignores O_APPEND.)
+	remove(EXIT_FILE);
+	if (freopen(STDOUT_FILE, "wb", stdout))
+	{
+		setvbuf(stdout, nullptr, _IOLBF, 4096);
+		dup2(fileno(stdout), STDERR_FILENO);
+	}
+	report_exit_code = true;
+
+	printf("args.txt:");
+	for (size_t i = 0; i < args.size(); i++)
+		printf(" [%s]", args[i].c_str());
+	printf("\n");
+}
+
+void zc_3ds_init(int& argc, char**& argv)
 {
 	osSetSpeedupEnable(true);
 	check_memory();
@@ -160,6 +222,7 @@ void zc_3ds_init()
 	mkdir("sdmc:/3ds", 0777);
 	mkdir(DATA_DIR, 0777);
 	chdir(DATA_DIR);
+	read_args_file(argc, argv);
 	std::set_new_handler(on_out_of_memory);
 
 	// Refresh resources whenever they change. The staged RomFS carries a hash of its

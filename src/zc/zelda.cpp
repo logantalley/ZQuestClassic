@@ -3931,7 +3931,7 @@ static void init_bitmaps()
 int main(int argc, char **argv)
 {
 #ifdef __3DS__
-	zc_3ds_init();
+	zc_3ds_init(argc, argv);
 #endif
 
 	int test_zc_arg = used_switch(argc, argv, "-test-zc");
@@ -3967,6 +3967,15 @@ int main(int argc, char **argv)
 #endif
 
 	zalleg_setup_allegro(App::zelda, argc, argv);
+#ifdef __3DS__
+	if (used_switch(argc, argv, "-jit-arm32-selftest"))
+	{
+		std::string log;
+		bool ok = zc_3ds_jit_selftest(log);
+		al_trace("%s", log.c_str());
+		zc_exit(ok ? 0 : 1);
+	}
+#endif
 	allocate_crap();
 	set_should_zprint_cb([]() {
 		return get_qr(qr_SCRIPTERRLOG) || DEVLEVEL > 0;
