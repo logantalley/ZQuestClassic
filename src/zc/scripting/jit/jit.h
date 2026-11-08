@@ -13,6 +13,7 @@
 #define JIT_X64 1
 #define JIT_WASM 2
 #define JIT_A64 3
+#define JIT_ARM32 4
 
 #if ZC_JIT_BACKEND == JIT_NONE
 	#include "zc/scripting/jit/jit_none.h"
@@ -22,6 +23,8 @@
 	#include "zc/scripting/jit/jit_wasm.h"
 #elif ZC_JIT_BACKEND == JIT_A64
 	#include "zc/scripting/jit/jit_a64.h"
+#elif ZC_JIT_BACKEND == JIT_ARM32
+	#include "zc/scripting/jit/jit_arm32.h"
 #endif
 
 ZC_FORMAT_PRINTF(1, 2)

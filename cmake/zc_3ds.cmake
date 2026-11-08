@@ -12,9 +12,12 @@ if(NOT NINTENDO_3DS)
 	message(FATAL_ERROR "ZC_3DS requires the devkitPro 3DS toolchain file ($DEVKITPRO/cmake/3DS.cmake)")
 endif()
 
-# Only zplayer is built: no JIT for ARM32, and nothing that needs an OS
-# (processes, sockets, native dialogs, crash handlers).
-set(JIT_BACKEND "none" CACHE STRING "" FORCE)
+# Only zplayer is built, and nothing that needs an OS (processes, sockets,
+# native dialogs, crash handlers). The arm32 JIT backend is still in the works
+# (docs/jit-arm32.md): opt in with -DJIT_BACKEND=arm32.
+if(JIT_BACKEND STREQUAL "default")
+	set(JIT_BACKEND "none" CACHE STRING "" FORCE)
+endif()
 foreach(var WANT_ZUPDATER WANT_SENTRY WANT_WEBSOCKETS WANT_NFD WANT_ZC_TESTS)
 	set(${var} FALSE CACHE BOOL "" FORCE)
 endforeach()

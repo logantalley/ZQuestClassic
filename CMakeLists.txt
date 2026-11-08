@@ -85,7 +85,7 @@ set(WANT_VENDORED_LIBJPEG_TURBO TRUE CACHE BOOL "Build the vendored library at t
 set(WANT_VENDORED_JSON TRUE CACHE BOOL "Build the vendored library at third_party/json")
 set(WANT_VENDORED_LIBOGG TRUE CACHE BOOL "Build the vendored library at third_party/libogg")
 set(WANT_VENDORED_LIBVORBIS TRUE CACHE BOOL "Build the vendored library at third_party/libvorbis")
-set(JIT_BACKEND "default" CACHE STRING "One of: default, x64, a64, wasm, none")
+set(JIT_BACKEND "default" CACHE STRING "One of: default, x64, a64, arm32, wasm, none")
 set(ZC_VERSION "" CACHE STRING "Version string")
 set(ZC_OFFICIAL "" CACHE BOOL "Official build")
 set(WANT_ERROR_CHECKING TRUE CACHE BOOL "")
@@ -1113,6 +1113,15 @@ elseif(JIT_BACKEND STREQUAL "x64" OR JIT_BACKEND STREQUAL "a64")
 	get_target_property(asm_compile_options asmjit COMPILE_OPTIONS)
 	string(REPLACE "$<NOT:$<CONFIG:Debug>>" "$<NOT:$<CONFIG:Debug,Asan>>" asm_compile_options "${asm_compile_options}")
 	set_target_properties(asmjit PROPERTIES COMPILE_OPTIONS "${asm_compile_options}")
+elseif(JIT_BACKEND STREQUAL "arm32")
+	# 32-bit ARM (the 3DS): the shared driver, with an in-tree assembler instead of asmjit.
+	target_sources(zplayer PUBLIC
+		src/zc/scripting/jit/jit_shared.cpp
+		src/zc/scripting/jit/jit_arm32.cpp
+		src/zc/scripting/jit/jit_arm32_ops.cpp
+		src/zc/scripting/jit/arm32/arm32_asm.cpp
+	)
+	target_compile_definitions(base PUBLIC ZC_JIT_BACKEND=4)
 elseif(JIT_BACKEND STREQUAL "wasm")
 	target_sources(zplayer PUBLIC src/zc/scripting/jit/jit_wasm.cpp src/zc/wasm_structurer.cpp)
 	target_compile_definitions(base PUBLIC ZC_JIT_BACKEND=2)
