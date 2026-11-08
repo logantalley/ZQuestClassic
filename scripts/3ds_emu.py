@@ -144,7 +144,7 @@ def setup_home(home: Path):
         dspfirm.write_bytes(bytes(64 * 1024))
 
 
-def ensure_display(display: int):
+def ensure_display(display: int, home: Path):
     """Starts Xvfb on the display unless something already serves it. Returns the process."""
     lock = Path(f'/tmp/.X{display}-lock')
     try:
@@ -154,8 +154,12 @@ def ensure_display(display: int):
         # Not running; clear what a killed server left behind.
         lock.unlink(missing_ok=True)
         Path(f'/tmp/.X11-unix/X{display}').unlink(missing_ok=True)
+    # Run a renamed copy, so that a `pkill Xvfb` meant for another emulator spares this one.
+    xvfb = home / f'zc-xserver-{display}'
+    if not xvfb.exists():
+        shutil.copy2(shutil.which('Xvfb'), xvfb)
     p = subprocess.Popen(
-        ['Xvfb', f':{display}', '-screen', '0', '1280x800x24'],
+        [str(xvfb), f':{display}', '-screen', '0', '1280x800x24'],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -223,7 +227,7 @@ def main():
     allegro_log = app_dir / 'allegro.log'
     log_start = allegro_log.stat().st_size if allegro_log.exists() else 0
 
-    xvfb = ensure_display(args.display)
+    xvfb = ensure_display(args.display, home)
     env = {
         **os.environ,
         'HOME': str(home),
