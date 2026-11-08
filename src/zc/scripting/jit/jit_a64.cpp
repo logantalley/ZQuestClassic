@@ -2406,3 +2406,8 @@ std::optional<JittedFunction> jit_backend_compile_function(zasm_script* script, 
 	};
 	return j_fn;
 }
+
+void jit_backend_release_script([[maybe_unused]] JittedScript* j_script)
+{
+	// asmjit's JitRuntime keeps all code until exit.
+}

@@ -156,6 +156,11 @@ struct JittedScriptInstance
 // one piece of a function to native code, or std::nullopt if it should stay interpreted.
 std::optional<JittedFunction> jit_backend_compile_function(zasm_script* script, JittedScript* j_script, pc_t piece_id);
 
+// Provided by the backend: frees the native code of every function of `j_script` (committed and
+// pending), which is about to be deleted. Nothing may be running it: called from jit_release,
+// which is only called when quest scripts are reloaded, when no script instance is left.
+void jit_backend_release_script(JittedScript* j_script);
+
 // The analysis to compile a function with: the script's if it has one, otherwise `storage`,
 // filled in for just this function.
 const JitFunctionAnalysis& jit_analyze_function(zasm_script* script, JittedScript* j_script, const ZasmFunction& fn, JitFunctionAnalysis& storage);

@@ -656,6 +656,7 @@ void jit_release(JittedScript* j_script)
 	if (!j_script)
 		return;
 
+	jit_backend_release_script(j_script);
 	al_destroy_mutex(j_script->mutex);
 	delete j_script;
 }

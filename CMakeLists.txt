@@ -1119,6 +1119,7 @@ elseif(JIT_BACKEND STREQUAL "arm32")
 		src/zc/scripting/jit/jit_shared.cpp
 		src/zc/scripting/jit/jit_arm32.cpp
 		src/zc/scripting/jit/jit_arm32_ops.cpp
+		src/zc/scripting/jit/jit_arm32_release.cpp
 		src/zc/scripting/jit/arm32/arm32_asm.cpp
 	)
 	target_compile_definitions(base PUBLIC ZC_JIT_BACKEND=4)
