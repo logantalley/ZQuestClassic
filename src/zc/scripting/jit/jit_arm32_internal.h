@@ -38,6 +38,18 @@ constexpr Reg kSwitchKey = R8;  // the SWITCHKEY register, which the JIT keeps i
 // Scratch for data commands: R0-R3, R12, LR. Any call into C (including the z-register
 // helpers below, for registers that are not D/G/SWITCHKEY) clobbers R0-R3, R12 and LR.
 
+// The machine stack pointer and pc. components/zasm/defines.h #defines SP and PC (they are
+// z-registers), which hides arm32::SP / arm32::PC in every translation unit that includes it
+// after arm32_asm.h - this header does. Use these instead.
+constexpr Reg kHostSp = static_cast<Reg>(13);
+constexpr Reg kHostPc = static_cast<Reg>(15);
+
+// The core's frame has two 4-byte spill slots at [kHostSp, #0] and [kHostSp, #4], free for any
+// command to use within its own code (e.g. to keep a value across a z-register access that
+// calls into C). Nothing is kept there between commands.
+constexpr int kSpillSlot0 = 0;
+constexpr int kSpillSlot1 = 4;
+
 } // namespace arm32
 
 // Compilation state for one piece of a function. Owned by the core; the data-command half
@@ -81,7 +93,21 @@ void arm32_store_zreg_imm(Arm32State& s, int r, int32_t imm);
 void arm32_call_c(Arm32State& s, const void* fn);
 
 // dst <- &stack[index_reg + offset_words] (stack_base + 4*(index + offset)).
+// Uses only dst, and leaves the flags alone.
 void arm32_stack_addr(Arm32State& s, arm32::Reg dst, arm32::Reg index_reg, int offset_words = 0);
+
+// What the z-register helpers clobber, besides their destination:
+// - arm32_load_zreg: nothing when the register is read directly (dst is the only register
+//   written); otherwise everything a call into C clobbers.
+// - arm32_store_zreg: LR when written directly (R12 instead if src is LR); otherwise everything
+//   a call into C clobbers. arm32_store_zreg_imm holds the value in R12, so written directly it
+//   clobbers R12 and LR.
+// The direct paths never change the flags.
+//
+// Whether accessing z-register r (a read, or a write if is_write) calls into C, i.e. clobbers
+// R0-R3, R12, LR and the flags. With two registers to read, read one that calls C first (or keep
+// it in a spill slot across the second).
+bool arm32_zreg_access_calls_c(int r, bool is_write);
 
 // --- Implemented by the data-command half (jit_arm32_ops.cpp), for the core ---
 
