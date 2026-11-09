@@ -60,6 +60,59 @@ extern "C" char* __wrap_getcwd(char* buf, size_t size)
 // needs ~20 MB of heap for combos alone, so keep the linear heap small.
 extern "C" u32 __ctru_linear_heap_size = 8 * 1024 * 1024;
 extern "C" u32 __ctru_heap_size;
+extern "C" u32 __ctru_heap, __ctru_linear_heap;
+extern "C" char* fake_heap_start;
+extern "C" char* fake_heap_end;
+
+// Replaces libctru's (weak) heap setup, which runs before main. libctru sizes the heap from
+// the process's resource limit, but the APPLICATION region can have less memory physically
+// free than that (on hardware, not in emulators), and then the allocation fails and libctru
+// stops the app with svcBreak - so the player crashed at launch once its static data shrank
+// and the heap it asked for grew. Size the heap from what the region really has free, and
+// step down if the kernel still refuses.
+extern "C" void __system_allocateHeaps(void)
+{
+	constexpr u32 page = 0x1000, step = 1024 * 1024;
+
+	u32 remaining = 0;
+	Handle reslimit = 0;
+	if (R_SUCCEEDED(svcGetResourceLimit(&reslimit, CUR_PROCESS_HANDLE)))
+	{
+		ResourceLimitType type = RESLIMIT_COMMIT;
+		s64 limit = 0, current = 0;
+		svcGetResourceLimitLimitValues(&limit, reslimit, &type, 1);
+		svcGetResourceLimitCurrentValues(&current, reslimit, &type, 1);
+		svcCloseHandle(reslimit);
+		if (limit > current)
+			remaining = (u32)(limit - current);
+	}
+	u32 region_free = osGetMemRegionFree(MEMREGION_APPLICATION);
+	if (region_free < remaining)
+		remaining = region_free;
+	remaining &= ~(page - 1);
+
+	u32 linear_size = __ctru_linear_heap_size;
+	if (remaining <= linear_size + step)
+		svcBreak(USERBREAK_PANIC);
+	u32 heap_size = remaining - linear_size;
+
+	Result rc;
+	while ((rc = svcControlMemory(&__ctru_heap, OS_HEAP_AREA_BEGIN, 0x0, heap_size,
+		MEMOP_ALLOC, (MemPerm)(MEMPERM_READ | MEMPERM_WRITE))) < 0 && heap_size > step)
+		heap_size -= step;
+	if (rc < 0)
+		svcBreak(USERBREAK_PANIC);
+	__ctru_heap_size = heap_size;
+
+	if (svcControlMemory(&__ctru_linear_heap, 0x0, 0x0, linear_size, MEMOP_ALLOC_LINEAR,
+		(MemPerm)(MEMPERM_READ | MEMPERM_WRITE)) < 0)
+		svcBreak(USERBREAK_PANIC);
+
+	mappableInit(OS_MAP_AREA_BEGIN, OS_MAP_AREA_END);
+
+	fake_heap_start = (char*)__ctru_heap;
+	fake_heap_end = fake_heap_start + __ctru_heap_size;
+}
 // The main thread's stack (taken from the heap) defaults to 32 KB, far below what ZC
 // assumes (1 MB on Windows, 5 MB on the web).
 extern "C" u32 __stacksize__ = 4 * 1024 * 1024;
