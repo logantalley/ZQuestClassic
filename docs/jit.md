@@ -40,7 +40,7 @@ jit_precompile = 0
 jit_cache_registers = 1
 ```
 
-With `jit_threads = 0` there is no worker pool to compile hot functions in the background, so the native backends precompile every script on quest load, as if `jit_precompile` were on. The browser build always precompiles.
+With `jit_threads = 0` there is no worker pool to compile hot functions in the background, so the native backends precompile every script on quest load, as if `jit_precompile` were on - unless `jit_compile_hot_inline = 1` (`-jit-compile-hot-inline`; the default where `ZC_HAS_THREADS` is 0, i.e. the 3DS, where precompiling a large quest runs out of memory): then each script is prepared when it first runs, and its hot functions are compiled on the main thread as they become hot. The browser build always precompiles.
 
 ## How the interpreter runs ZASM
 

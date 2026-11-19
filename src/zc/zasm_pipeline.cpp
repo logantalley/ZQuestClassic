@@ -1,4 +1,5 @@
 #include "zc/zasm_pipeline.h"
+#include "base/platform.h"
 #include "zc/scripting/jit/jit.h"
 #include "zc/zasm_optimize.h"
 #include "zc/zasm_utils.h"
@@ -95,7 +96,15 @@ void zasm_pipeline_init(bool force_precompile)
 		precompile = true;
 	if (get_flag_int("-test-bisect").has_value() || get_flag_int("-test-jit-bisect").has_value())
 		precompile = true;
-	if (!precompile && !num_worker_threads && jit_is_enabled())
+	// Without threads, hot functions can instead be compiled on the main thread as they become
+	// hot (scripts are prepared when they first run). The default where threads don't pay off
+	// (the 3DS), where precompiling a large quest needs more memory than there is.
+	if (!precompile && !num_worker_threads && jit_is_enabled() &&
+		is_feature_enabled("-jit-compile-hot-inline", "ZSCRIPT", "jit_compile_hot_inline", !ZC_HAS_THREADS))
+	{
+		zasm_pipeline_trace("no threads assigned for worker pool, so hot functions compile on the main thread");
+	}
+	else if (!precompile && !num_worker_threads && jit_is_enabled())
 	{
 		zasm_pipeline_trace("no threads assigned for worker pool, so must precompile");
 		precompile = true;

@@ -22,6 +22,9 @@ static bool is_enabled;
 static bool jit_log_enabled;
 static bool jit_use_cached_regs_enabled;
 static bool jit_precompile;
+// No precompiling and no worker pool: scripts are prepared for compilation when they first run, and
+// their hot functions compiled right away (see -jit-compile-hot-inline in zasm_pipeline.cpp).
+static bool jit_compile_on_demand;
 
 static ALLEGRO_MUTEX* compiled_scripts_mutex;
 // Values may be null.
@@ -192,6 +195,20 @@ JittedScriptInstance* jit_create_script_instance(script_data* script, refInfo* r
 		return nullptr;
 
 	auto j_script = find_jitted_script(script->zasm_script.get());
+	if (!j_script && jit_compile_on_demand)
+	{
+		zasm_script* zasm = script->zasm_script.get();
+		al_lock_mutex(compiled_scripts_mutex);
+		bool tried = compiled_scripts.contains(zasm->id);
+		al_unlock_mutex(compiled_scripts_mutex);
+		if (!tried)
+		{
+			j_script = jit_compile_script(zasm);
+			al_lock_mutex(compiled_scripts_mutex);
+			compiled_scripts[zasm->id] = j_script;
+			al_unlock_mutex(compiled_scripts_mutex);
+		}
+	}
 	if (j_script)
 		return jit_create_script_impl(script, ri, j_script);
 
@@ -214,6 +231,7 @@ void jit_startup(bool precompile)
 	jit_log_enabled = is_feature_enabled("-jit-log", "ZSCRIPT", "jit_log", false) || is_ci();
 	jit_use_cached_regs_enabled = is_feature_enabled("-jit-cache-registers", "ZSCRIPT", "jit_cache_registers", true);
 	jit_precompile = precompile;
+	jit_compile_on_demand = !precompile && !zasm_pipeline_worker_pool();
 
 	jit_startup_impl();
 
