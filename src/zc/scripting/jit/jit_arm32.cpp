@@ -12,8 +12,6 @@
 //   as scratch. Values never live across a command boundary in a scratch register.
 // - The D-register cache is off (phase 1): every D-register access is a load or store. The
 //   shared flush policy is still applied, over a cache that is never populated.
-// - Direct native calls between compiled functions are off: CALLFUNC/RETURNFUNC always go
-//   through the driver.
 // - No hardware divide: the one division in here (GOTOTABLE's key / 10000) is a reciprocal
 //   multiply, exact for every int32 (checked exhaustively against C's truncating division).
 //
@@ -59,7 +57,23 @@ struct CoreState
 	pc_t num_push_commands_in_row_end_pc = 0;
 	// The shared exit for a failed stack bounds check, bound after the epilogue if used.
 	Label L_StackOverflow;
+	// Calls to non-yielding functions are native calls (see "Direct calls between compiled
+	// functions" in docs/jit.md).
+	bool direct_calls = false;
+	// This function can be the target of direct calls (non-yielding, and this is its first
+	// piece), so its entry pushes the ZASM return pc and its RETURNFUNC pops it when entered
+	// directly (the frame slot kFrameEntryMode holds ctx->entry_mode as read at entry).
+	bool direct_entry = false;
+	// Return path for propagating a direct callee's non-RETURN exec result to the driver
+	// untouched. Unlike L_End it must not store kSp (ctx->sp holds the value saved by the
+	// function that actually exited).
+	Label L_PropagateEnd;
 };
+
+// The bytes below the saved registers: the two spill slots of jit_arm32_internal.h, then
+// ctx->entry_mode as read at entry, then padding (the frame stays 8-byte aligned).
+constexpr int kFrameLocals = 16;
+constexpr int kFrameEntryMode = 8;
 
 constexpr int32_t ctx_off(size_t member_offset)
 {
@@ -469,6 +483,13 @@ Label goto_target(Arm32State& s, int target_pc)
 	return it->second;
 }
 
+Label propagate_label(CoreState& cs)
+{
+	if (!cs.L_PropagateEnd.valid())
+		cs.L_PropagateEnd = cs.s.a.new_label();
+	return cs.L_PropagateEnd;
+}
+
 Label stack_overflow_label(CoreState& cs)
 {
 	if (!cs.L_StackOverflow.valid())
@@ -753,7 +774,44 @@ void compile_single_command(CoreState& cs, const ffscript& instr)
 		break;
 		case CALLFUNC:
 		{
-			// Through the driver (direct native calls are off in this phase).
+			// If the callee can never yield, call its compiled form directly on the native stack
+			// instead of round-tripping through the driver (which pays a function lookup, a
+			// resume-address lookup and a full prologue re-entry per call). The ZASM return stack
+			// is still maintained (by the helpers), so an unwind - interpreter bail, quit, or
+			// fallback to the driver path - leaves exactly the state a driver-made call would.
+			const auto& sz = s.j_script->structured_zasm;
+			auto callee_it = sz.start_pc_to_function.find(arg1);
+			if (cs.direct_calls && s.pc != s.final_pc &&
+				callee_it != sz.start_pc_to_function.end() && !sz.functions[callee_it->second].may_yield)
+			{
+				a.str(kSp, kCtx, CTX(sp));
+				// Until the callee is compiled and committed the slot holds jit_direct_not_compiled,
+				// which turns this into a driver-path call.
+				a.mov_imm(R3, (uint32_t)(uintptr_t)&s.j_script->direct_entry_table[callee_it->second]);
+				a.ldr(R3, R3, 0);
+				// The callee's entry pushes the ZASM return pc, which is stored in ctx->call_pc.
+				a.mov_imm(R1, (uint32_t)(s.pc + 1));
+				a.str(R1, kCtx, CTX(call_pc));
+				a.mov_imm(R1, 1);
+				a.str(R1, kCtx, CTX(entry_mode));
+				a.mov(R0, kCtx);
+				a.blx(R3);
+				// EXEC_RESULT_RETURN is a normal return; anything else unwinds through this frame
+				// untouched (R0 already holds it).
+				a.cmp_imm(R0, EXEC_RESULT_RETURN);
+				a.b(propagate_label(cs), NE);
+				// The callee consumed its arguments from the ZASM stack.
+				a.ldr(kSp, kCtx, CTX(sp));
+				s.modified_stack = true;
+				// Mirror the driver, which sets ctx->pc to the popped return pc on every return
+				// (error traces read it).
+				set_ctx_pc_imm(a, s.pc + 1);
+				// Fall through to the resume label, where a driver-path call (made by the stub or
+				// the callee's depth cap) resumes.
+				a.bind(s.resume_labels[s.pc]);
+				break;
+			}
+
 			set_ctx_pc_imm(a, s.pc);
 			a.mov_imm(R1, (uint32_t)arg1);
 			a.str(R1, kCtx, CTX(call_pc));
@@ -764,6 +822,17 @@ void compile_single_command(CoreState& cs, const ffscript& instr)
 		break;
 		case RETURNFUNC:
 		{
+			if (cs.direct_entry)
+			{
+				// When entered by a direct call, the driver never sees this return, so pop the
+				// ZASM return stack here (driver-entered returns are popped by the driver).
+				Label L_driver_return = a.new_label();
+				a.ldr(R0, kHostSp, kFrameEntryMode);
+				a.cmp_imm(R0, 0);
+				a.b(L_driver_return, EQ);
+				a.call((const void*)jit_direct_retstack_pop, R12);
+				a.bind(L_driver_return);
+			}
 			exit_with(s, EXEC_RESULT_RETURN);
 		}
 		break;
@@ -1052,18 +1121,24 @@ std::optional<JittedFunction> jit_backend_compile_function(zasm_script* script, 
 		.final_pc = final_pc,
 		.runtime_debugging = runtime_debugging,
 	};
-	CoreState cs{.s = s};
+	static bool direct_calls = get_flag_bool("-jit-direct-calls").value_or(true);
+	CoreState cs{
+		.s = s,
+		.direct_calls = direct_calls,
+		// Direct calls enter a function at its start, so only its first piece.
+		.direct_entry = direct_calls && !fn.may_yield && start_pc == fn.start_pc,
+	};
 	DRegCache<NoReg> cache;
 
 	LabelFactory label_factory{a};
 	jit_create_labels(s, label_factory, script, fn, start_pc, final_pc);
 	s.L_End = a.new_label();
 
-	// Prologue. R12 is saved only to keep the frame 8-byte aligned; the 8 bytes below the saved
-	// registers are spill slots.
+	// Prologue. R12 is saved only to keep the frame 8-byte aligned; below the saved registers
+	// are the frame's locals (kFrameLocals).
 	a.push(reg_mask(R4) | reg_mask(R5) | reg_mask(R6) | reg_mask(R7) | reg_mask(R8) | reg_mask(R9) |
 		reg_mask(R10) | reg_mask(R11) | reg_mask(R12) | reg_mask(LR));
-	a.sub_imm(kHostSp, kHostSp, 8);
+	a.sub_imm(kHostSp, kHostSp, kFrameLocals);
 	a.mov(kCtx, R0);
 	a.ldr(kRegisters, kCtx, CTX(registers));
 	a.ldr(kStackBase, kCtx, CTX(stack_base));
@@ -1071,6 +1146,29 @@ std::optional<JittedFunction> jit_backend_compile_function(zasm_script* script, 
 	// A SWITCHKEY read can occur linearly before any write (e.g. a branch target that saves the
 	// outer switch's key), so give it a defined start value, like a64.
 	a.mov_imm(kSwitchKey, 0);
+
+	// Direct-entry preamble. A direct native call always enters at the function start with the
+	// ZASM return pc in ctx->call_pc: push it (via the helper, which also enforces the native depth
+	// cap - past it the ctx is rewritten into a driver-path call for this callee and we propagate
+	// EXEC_RESULT_CALL without executing), and skip the resume dispatch, whose
+	// ctx->resume_address is stale for this entry mode.
+	Label L_after_entry = a.new_label();
+	if (cs.direct_entry)
+	{
+		Label L_driver_entry = a.new_label();
+		a.ldr(R0, kCtx, CTX(entry_mode));
+		a.str(R0, kHostSp, kFrameEntryMode);
+		a.cmp_imm(R0, 0);
+		a.b(L_driver_entry, EQ);
+		a.mov(R0, kCtx);
+		a.mov_imm(R1, (uint32_t)start_pc);
+		a.call((const void*)jit_direct_enter, R12);
+		a.cmp_imm(R0, 0);
+		a.b(L_after_entry, EQ);
+		a.mov_imm(R0, EXEC_RESULT_CALL);
+		a.b(propagate_label(cs));
+		a.bind(L_driver_entry);
+	}
 
 	// If resuming after a call or wait, or entering a piece mid-way (see JitPiece), jump to the
 	// resume label at ctx->resume_address. A resume label bound at the command with pc K is where
@@ -1081,6 +1179,7 @@ std::optional<JittedFunction> jit_backend_compile_function(zasm_script* script, 
 		a.cmp_imm(R0, 0);
 		a.bx(R0, NE);
 	}
+	a.bind(L_after_entry);
 
 	std::string comment;
 	std::map<int, int> uncompiled_command_counts;
@@ -1124,9 +1223,20 @@ std::optional<JittedFunction> jit_backend_compile_function(zasm_script* script, 
 	a.bind(s.L_End);
 	a.comment("epilogue");
 	a.str(kSp, kCtx, CTX(sp));
-	a.add_imm(kHostSp, kHostSp, 8);
+	Label L_Return = a.new_label();
+	a.bind(L_Return);
+	a.add_imm(kHostSp, kHostSp, kFrameLocals);
 	a.pop(reg_mask(R4) | reg_mask(R5) | reg_mask(R6) | reg_mask(R7) | reg_mask(R8) | reg_mask(R9) |
 		reg_mask(R10) | reg_mask(R11) | reg_mask(R12) | reg_mask(kHostPc));
+
+	// Unwind path for direct native calls: pass the callee's exec result (in R0) up unchanged,
+	// and do NOT store this function's kSp - ctx holds the pc/sp saved by the function that
+	// actually exited.
+	if (cs.L_PropagateEnd.valid())
+	{
+		a.bind(cs.L_PropagateEnd);
+		a.b(L_Return);
+	}
 
 	// Jumps out of this piece: continue at the target pc through the driver.
 	for (auto& [pc, label] : s.exit_stubs)
