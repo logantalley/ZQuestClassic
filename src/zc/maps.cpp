@@ -1,3 +1,4 @@
+extern "C" void heapprof_dump(const char*);
 #include "core/combo.h"
 #include "core/handles.h"
 #include "base/util.h"
@@ -8147,6 +8148,7 @@ void ViewMap()
 	
 	bool done=false, redraw=true;
 	
+	heapprof_dump("viewmap");
 	BITMAP* mappic = create_bitmap_ex(8,256*16,176*8);
 	
 	if(!mappic)

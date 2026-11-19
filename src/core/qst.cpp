@@ -1,3 +1,4 @@
+extern "C" void heapprof_dump(const char*);
 #include "allegro/file.h"
 #include "core/flags.h"
 #include "base/general.h"
@@ -2858,11 +2859,14 @@ int32_t loadquest(const char *filename, zquestheader *Header, miscQdata *Misc,
 	if (!is_ci() && !is_headless())
 		loadquest_report = report;
 
+	static int hp_n; hp_n++;
+	{ char t[32]; snprintf(t, sizeof t, "before_load%d", hp_n); heapprof_dump(t); }
 	auto start = std::chrono::steady_clock::now();
 	zprint2("Loading qst: %s\n", filename);
 	int32_t ret = _lq_int(filename, Header, Misc, tunes, show_progress, skip_flags, printmetadata, stream_decode);
 	int32_t load_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
 	zprint2("Time to load qst: %d ms\n", load_ms);
+	{ char t[32]; snprintf(t, sizeof t, "after_load%d", hp_n); heapprof_dump(t); }
 	if (ret)
 		zprint2("Error: %s\n", qst_error[ret]);
 
